@@ -54,6 +54,8 @@ They are currently fixed and can't be changed without recompiling the code, but 
 
 - R2: Right Trigger
 
+- Car orbit: Right Stick
+
 - Quit game: Windows/Back button
 
 Some extra notes about FrontEnd: PC version has had some changes to console navigation and complicated some things
