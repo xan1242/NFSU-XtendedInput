@@ -1,6 +1,6 @@
 # NFS Underground - Xtended Input
 
-This is an plugin for NFS Underground which brings XInput support to the game.
+This is a plugin for NFS Underground which brings XInput support to the game.
 
 Currently work in progress, but fully usable and playable!
 
