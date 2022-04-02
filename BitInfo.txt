@@ -1,0 +1,58 @@
+BIT ARRAY
+00719780
+
+INGAME:
+00 - NULL
+01 - digital throttle
+02 - digital reverse
+03 - digital left
+04 - digital right
+05 - ebrake
+06 - NOS
+07 - shift up
+08 - shift down
+09 - look back
+10 - change cam
+11 - P2 start / debug camera spawn car / 5 key and Q key
+12 - pause
+13 - unk
+14 - reset car
+15 - unk
+FE CONTROLS
+16 - up
+17 - down
+18 - left
+19 - right
+20 - accept
+21 - ? start?
+22 - H key (HELP?)
+23 - back
+24 - C key - select?
+25 - L2
+26 - R2
+27 - left shoulder
+28 - right shoulder
+29 - car orbit up
+30 - car orbit left
+31 - car orbit down
+from 00719784 ( counting up bits with 32 offset )
+32 - car orbit right
+// Player 2???
+33 - HOME key
+34 - END key
+35 - P key?
+36 - quit game / Q key
+37 - R key
+38 - debug camera up
+39 - debug camera down
+40 - d.c. left
+41 - d.c. right
+42 - U key
+43 - Y key
+44 - Z key
+45 - colon
+46 - quote " key
+47 - T key / 4 ingame - debug camera turbo
+48 - 6 key - debug camera super turbo
+50 - O key
+51 - activate debug camera
