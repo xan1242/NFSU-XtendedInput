@@ -366,7 +366,7 @@ void SetXboxFEButtons(char* pkgname)
 	if (FEHashUpper(pkgname) == 0x2729D8C3) // if we're in LS_Splash_PC.fng
 	{
 		wcstombs(CurrentSplashText, *(wchar_t**)(FEngFindString("LS_Splash_PC.fng", 0x13CF446D) + 0x60), 0x800);
-		if (FEHashUpper(CurrentSplashText) != 0x544518FD) // "Press MENU button"
+		if (FEHashUpper(CurrentSplashText) != 0x4741A18D) // "Press MENU/A button"
 			FEPrintf((void*)FEngFindString("LS_Splash_PC.fng", 0x13CF446D), "Press MENU/A button"); // mouse_click text object
 	}
 }
@@ -418,7 +418,7 @@ void SetPlayStationFEButtons(char* pkgname)
 	if (FEHashUpper(pkgname) == 0x2729D8C3) // if we're in LS_Splash_PC.fng
 	{
 		wcstombs(CurrentSplashText, *(wchar_t**)(FEngFindString("LS_Splash_PC.fng", 0x13CF446D) + 0x60), 0x800);
-		if (FEHashUpper(CurrentSplashText) != 0x0BACC2D4) // "Press OPTIONS button"
+		if (FEHashUpper(CurrentSplashText) != 0xB1253D5B) // "Press OPTIONS/X button"
 			FEPrintf((void*)FEngFindString("LS_Splash_PC.fng", 0x13CF446D), "Press OPTIONS/X button"); // mouse_click text object
 	}
 }
