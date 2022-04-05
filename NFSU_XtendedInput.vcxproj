@@ -83,7 +83,6 @@
   <ItemGroup>
     <ClInclude Include="NFSU_ConsoleButtonHashes.h" />
     <ClInclude Include="NFSU_EventNames.h" />
-    <ClInclude Include="NFSU_JoyBitInfo.h" />
     <ClInclude Include="NFSU_XtendedInput_FEng.h" />
     <ClInclude Include="NFSU_XtendedInput_VKHash.h" />
     <ClInclude Include="NFSU_XtendedInput_XInputConfig.h" />
