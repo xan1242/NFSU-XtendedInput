@@ -13,7 +13,6 @@
 #include "stdio.h"
 #include <windows.h>
 #include <bitset>
-#include "NFSU_JoyBitInfo.h"
 #include "NFSU_ConsoleButtonHashes.h"
 #include "NFSU_EventNames.h"
 #include "NFSU_XtendedInput_FEng.h"
