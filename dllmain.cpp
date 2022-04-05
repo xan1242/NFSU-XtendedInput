@@ -2,12 +2,12 @@
 // Bringing native XInput to NFS
 // by Xan/Tenjoin
 
-// TODO: hook input scanners instead -- they're a better and more accurate target than the joypad input buffer
 // TODO: bring rumble/vibration function
-// TODO: remapping?
-// TODO: bring back P2 controls if possible
+// TODO: remapping? -- partially done, but only 1 event per key and 1 key per event
 // TODO: kill DInput enough so that it doesn't detect XInput controllers but still detects wheels
 // TODO: properly restore console FrontEnd objects (help messages, controller icons) -- partially done, HELP menu still needs to be restored
+// TODO: reassigned button textures -- so when you set Y button for BUTTON1 in FE, it should draw Y and not keep drawing X
+// TODO: proper raw input for keyboard (and maybe non XInput gamepads?)
 
 #include "stdafx.h"
 #include "stdio.h"
@@ -15,6 +15,10 @@
 #include <bitset>
 #include "NFSU_JoyBitInfo.h"
 #include "NFSU_ConsoleButtonHashes.h"
+#include "NFSU_EventNames.h"
+#include "NFSU_XtendedInput_FEng.h"
+#include "NFSU_XtendedInput_XInputConfig.h"
+#include "NFSU_XtendedInput_VKHash.h"
 #include "includes\injector\injector.hpp"
 #include "includes\IniReader.h"
 
@@ -44,27 +48,15 @@
 #define FEMOUSECURSOR_BUTTONPRESS_ADDR 0x007064B0
 #define FEMOUSECURSOR_CARORBIT_X_ADDR 0x007064A4
 #define FEMOUSECURSOR_CARORBIT_Y_ADDR 0x007064A8
-
-bool bCarOrbitState = 0;
-bool bCarOrbitOldState = 0;
-float CarOrbitDivisor = 0.5;
-
-bool bLoadedConsoleButtonTex = false;
-char LastFEngPackage[128];
-char CurrentSplashText[64];
-
-#define LASTCONTROLLED_KB 0
-#define LASTCONTROLLED_CONTROLLER 1
-unsigned int LastControlledDevice = 0; // 0 = keyboard, 1 = controller
-unsigned int LastControlledDeviceOldState = 0;
-
-#define CONTROLLERICON_XBOXONE 0
-#define CONTROLLERICON_PS4 1
-unsigned int ControllerIconMode = 0; // 0 = Xbox (One and later only for now), 1 = PlayStation (4 only now) -- planned to add: Nintendo (Wii/U Classic Controller, Switch), PS3/PS2, Xbox 360
+#define NUMSCANNERCONFIGS_ADDR 0x00704140
+#define JOYSTICKTYPE_P1_ADDR 0x007306C4
+#define JOYSTICKTYPE_P2_ADDR 0x007306C5
+#define JOYSTICK_P1_CONNECTION_STATUS_ADDR 0x736504
+#define GAME_HWND_ADDR 0x00736380
 
 // for triggering the over-zelaous inputs once in a tick...
 WORD bQuitButtonOldState = 0;
-WORD bZButtonOldState = 0;
+WORD bYButtonOldState = 0;
 WORD bXButtonOldState = 0;
 
 struct CONTROLLER_STATE
@@ -73,438 +65,1014 @@ struct CONTROLLER_STATE
 	bool bConnected;
 }g_Controllers[MAX_CONTROLLERS];
 
-enum ResourceFileType
-{
-	RESOURCE_FILE_NONE = 0,
-	RESOURCE_FILE_GLOBAL = 1,
-	RESOURCE_FILE_FRONTEND = 2,
-	RESOURCE_FILE_INGAME = 3,
-	RESOURCE_FILE_TRACK = 4,
-	RESOURCE_FILE_NIS = 5,
-	RESOURCE_FILE_CAR = 6,
-	RESOURCE_FILE_LANGUAGE = 7,
-	RESOURCE_FILE_REPLAY = 8,
-};
+// KB Input declarations
+//unbuffered -- calls GetAsyncKeyState during scanning process itself -- probably more taxing, but very good input latency (default)
+#define KB_READINGMODE_UNBUFFERED_ASYNC 0
+// buffered -- calls GetKeyboardState right after reading joypads, updates VKeyStates
+#define KB_READINGMODE_BUFFERED 1
+// unbuffered -- reads unbuffered raw input during WM_INPUT, updates VKeyStates, pretty slow but allows to differentiate between 2 different keyboard devices
+#define KB_READINGMODE_UNBUFFERED_RAW 2
+// TODO: buffered raw input
 
-void*(*CreateResourceFile)(char* filename, int ResType, int unk1, int unk2, int unk3) = (void*(*)(char*, int, int, int, int))0x004482F0;
-void(*ServiceResourceLoading)() = (void(*)())0x004483C0;
-unsigned int(*GetTextureInfo)(unsigned int hash, int unk, int unk2) = (unsigned int(*)(unsigned int, int, int))0x005461C0;
+RAWINPUTDEVICE Rid;
+BYTE VKeyStates[2][255];
+bool KeyboardState = true; // connection status
+bool bAllowTwoPlayerKB = false; // allow for 2 players to use their own KB devices (nothing to do with gamepads)
+unsigned int KeyboardReadingMode = 0; // 0 = buffered synchronous, 1 = unbuffered asynchronous, 2 = unbuffered raw
+HANDLE FirstKB = NULL;
+HANDLE SecondKB = NULL;
+USHORT SteerLeftVKey = VK_LEFT;
+USHORT SteerRightVKey = VK_RIGHT;
+
+// Input ScannerConfig - JoyEvent mapping
+struct ScannerConfig
+{
+	unsigned int JoyConfigType = 0xFF; // 0xFF default
+	unsigned int unk1; // not read
+	unsigned int JoyEvent;
+	unsigned int ScannerFunctionPointer;
+	short int BitmaskStuff; // used to define which bits are read from the joypad buffer
+	short int BitmaskStuff2; // used to define which bits are read from the joypad buffer
+	unsigned int param; // if prev value was 0x10000 = button texture hash, if 0x10001 = max value, hard to determine
+	unsigned int keycode; // normally unknown, we're reutilizing this value
+	unsigned int unk5;
+}ScannerConfigs[MAX_JOY_EVENT]; // we're generating scanners for ALL JoyEvents - not something devs normally do
+
+// we use this to track the state of each button for each event
+WORD EventStates[2][MAX_JOY_EVENT];
+bool EventStatesKB[2][MAX_JOY_EVENT];
 
 unsigned int GameWndProcAddr = 0;
 LRESULT(WINAPI* GameWndProc)(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
-
 LRESULT WINAPI CustomWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	if (msg == WM_KEYDOWN)
+	if ((msg == WM_INPUT) && (KeyboardReadingMode == KB_READINGMODE_UNBUFFERED_RAW))
+	{
+		UINT dwSize;
+		
+		GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
+		LPBYTE lpb = new BYTE[dwSize];
+		if (lpb == NULL)
+		{
+			KeyboardState = false;
+			return 0;
+		}
+		
+		if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, lpb, &dwSize, sizeof(RAWINPUTHEADER)) != dwSize)
+		{
+			KeyboardState = false;
+			OutputDebugString(TEXT("GetRawInputData does not return correct size !\n"));
+		}
+		
+		RAWINPUT* raw = (RAWINPUT*)lpb;
+		
+		if (raw->header.dwType == RIM_TYPEKEYBOARD)
+		{
+			KeyboardState = true;
+			LastControlledDevice = LASTCONTROLLED_KB;
+
+			// going with first-come first-serve -- first KB is always the first used one
+			// this can catch a second virtual keyboard of a multi-device keyboard (the ones that use it for NKRO over USB), hence why it's optional
+			if ((FirstKB != NULL) && (FirstKB != raw->header.hDevice) && (SecondKB == NULL) && bAllowTwoPlayerKB)
+			{
+				SecondKB = raw->header.hDevice;
+				*(unsigned char*)JOYSTICKTYPE_P2_ADDR = 0;
+			}
+
+			if (FirstKB == NULL)
+				FirstKB = raw->header.hDevice;
+
+			//printf(" Kbd %p: make=%04x Flags:%04x Reserved:%04x ExtraInformation:%08x, msg=%04x VK=%04x \n",
+			//	raw->header.hDevice,
+			//raw->data.keyboard.MakeCode,
+			//	raw->data.keyboard.Flags,
+			//	raw->data.keyboard.Reserved,
+			//	raw->data.keyboard.ExtraInformation,
+			//	raw->data.keyboard.Message,
+			//	raw->data.keyboard.VKey);
+
+			if (raw->header.hDevice == SecondKB)
+			{
+				switch (raw->data.keyboard.VKey)
+				{
+				case VK_CONTROL:
+					if (raw->data.keyboard.Flags & RI_KEY_E0)
+						VKeyStates[1][VK_RCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					else
+						VKeyStates[1][VK_LCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					break;
+				case VK_MENU:
+					if (raw->data.keyboard.Flags & RI_KEY_E0)
+						VKeyStates[1][VK_RMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					else
+						VKeyStates[1][VK_LMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					break;
+				case VK_SHIFT:
+					if (raw->data.keyboard.MakeCode == 0x36)
+						VKeyStates[1][VK_RSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					else
+						VKeyStates[1][VK_LSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					break;
+				default:
+					VKeyStates[1][raw->data.keyboard.VKey] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					break;
+				}
+				return 0;
+			}
+			else if (raw->header.hDevice)
+			{
+				switch (raw->data.keyboard.VKey)
+				{
+				case VK_CONTROL:
+					if (raw->data.keyboard.Flags & RI_KEY_E0)
+						VKeyStates[0][VK_RCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					else
+						VKeyStates[0][VK_LCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					break;
+				case VK_MENU:
+					if (raw->data.keyboard.Flags & RI_KEY_E0)
+						VKeyStates[0][VK_RMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					else
+						VKeyStates[0][VK_LMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					break;
+				case VK_SHIFT:
+					if (raw->data.keyboard.MakeCode == 0x36)
+						VKeyStates[0][VK_RSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					else
+						VKeyStates[0][VK_LSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					break;
+				default:
+					VKeyStates[0][raw->data.keyboard.VKey] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+					break;
+				}
+			}
+
+			return 0;
+		}
+		
+		delete[] lpb;
+		return 0;
+	}
+	if ((msg == WM_KEYDOWN) && (KeyboardReadingMode != KB_READINGMODE_UNBUFFERED_RAW))
 		LastControlledDevice = LASTCONTROLLED_KB;
 
 	return GameWndProc(hWnd, msg, wParam, lParam);
 }
 
-unsigned int ResourceFile_BeginLoading_Addr = 0x00448110;
-void __stdcall ResourceFile_BeginLoading(void* ResourceFile, void* unk1, int unk2)
-{
-	_asm
-	{
-		mov edx, ResourceFile
-		mov ecx, unk2
-		mov eax, unk1
-		call ResourceFile_BeginLoading_Addr
-	}
-}
-
-void __stdcall LoadResourceFile(char* filename, int ResType, int unk1, void* unk2, int unk3, int unk4, int unk5)
-{
-	ResourceFile_BeginLoading(CreateResourceFile(filename, ResType, unk1, unk4, unk5), unk2, unk3);
-}
-
-unsigned int FEHashUpper_Addr = 0x004FD230;
-unsigned int __stdcall FEHashUpper(const char* instr)
-{
-	unsigned int result = 0;
-	_asm
-	{
-		mov edx, instr
-		call FEHashUpper_Addr
-		mov result, eax
-	}
-	return result;
-}
-
-// entrypoint: 0x004B0CB9
-unsigned int FECarOrbitCave_Exit1 = 0x004B0CC1;
-unsigned int FECarOrbitCave_Exit2 = 0x4B0D37;
-static bool bOrbitingWithRightStick = 0;
-void __declspec(naked) FECarOrbitCave()
-{
-	// using assembly here because MSVC insists on using the ebp register...
-	_asm
-	{
-		mov al, ds:FEMOUSECURSOR_BUTTONPRESS_ADDR
-		mov cl, bOrbitingWithRightStick
-		or al, cl
-		mov bCarOrbitState, al
-	}
-
-	if (bCarOrbitState != bCarOrbitOldState)
-	{
-		// on the change to false, for precisely 1 tick allow the variables to be updated
-		_asm
-		{
-			mov al, bCarOrbitState
-			mov bCarOrbitOldState, al
-			jmp FECarOrbitCave_Exit1
-		}
-	}
-
-	if (bCarOrbitState)
-		_asm jmp FECarOrbitCave_Exit1
-	_asm jmp FECarOrbitCave_Exit2
-}
-
-// texture & control stuff
-unsigned int FEPkgMgr_FindPackage_Addr = 0x004F65D0;
-unsigned int FEPackageManager_FindPackage_Addr = 0x004F3F90;
-unsigned int FEngFindObject_Addr = 0x004FFB70;
-unsigned int FEngSendMessageToPackage_Addr = 0x004C96C0;
-unsigned int FEPrintf_Addr = 0x004F68A0;
-#pragma runtime_checks( "", off )
-int __stdcall FEPrintf(void* FEString, char* format)
-{
-	_asm
-	{
-		mov eax, FEString
-		push format
-		call FEPrintf_Addr
-	}
-}
-#pragma runtime_checks( "", restore )
-void __stdcall FEngSendMessageToPackage(unsigned int msg, char* dest)
-{
-	_asm
-	{
-		push msg
-		mov eax, dest
-		call FEngSendMessageToPackage_Addr
-		add esp, 4
-	}
-}
-
-unsigned int __stdcall FEPkgMgr_FindPackage(const char* pkgname)
-{
-	unsigned int result = 0;
-	_asm
-	{
-		mov eax, pkgname
-		call FEPkgMgr_FindPackage_Addr
-		mov result, eax
-	}
-	return result;
-}
-
-unsigned int __stdcall FEPackageManager_FindPackage(const char* pkgname)
-{
-	unsigned int result = 0;
-	_asm
-	{
-		push 0x00746104
-		mov eax, pkgname
-		call FEPackageManager_FindPackage_Addr
-		mov result, eax
-	}
-	return result;
-}
-
-unsigned int __stdcall _FEngFindObject(const char* pkg, int hash)
-{
-	unsigned int result = 0;
-	_asm
-	{
-		mov ecx, hash
-		mov edx, pkg
-		call FEngFindObject_Addr
-		mov result, eax
-	}
-	return result;
-}
-
-unsigned int __stdcall FEngFindObject(const char* pkg, int hash)
-{
-	char* pkgname = (char*)FEPkgMgr_FindPackage(pkg);
-	if (!pkgname)
-		return 0;
-	else
-		return _FEngFindObject(pkgname, hash);
-}
-
-unsigned int __stdcall FEngSetTextureHash(unsigned int FEImage, int hash)
-{
-	int v2;
-
-	if (FEImage)
-	{
-		if (*(int*)(FEImage + 36) != hash)
-		{
-			v2 = *(int*)(FEImage + 28);
-			*(int*)(FEImage + 36) = hash;
-			*(int*)(FEImage + 28) = v2 | 0x400000;
-		}
-	}
-	return FEImage;
-}
-
-int __stdcall FEngFindString(const char* pkgname, int hash)
-{
-	int result; // r3
-
-	result = FEngFindObject(pkgname, hash);
-	if (!result || *(int*)(result + 24) != 2)
-		result = 0;
-	return result;
-}
-
-int __stdcall FEngFindImage(const char* pkgname, int hash)
-{
-	int result;
-
-	result = FEngFindObject(pkgname, hash);
-	if (!result || *(int*)(result + 24) != 1)
-		result = 0;
-	return result;
-}
-
-void SnoopLastFEPackage(char* format, char* pkg)
-{
-	strcpy(LastFEngPackage, pkg);
-}
-
-void SetPCFEButtons(char* pkgname)
-{
-	int FEImage = 0;
-	if (FEImage = FEngFindImage(pkgname, 0x06749436)) // DeleteProfile_hotkey
-		FEngSetTextureHash(FEImage, PC_DELETE);
-	if (FEImage = FEngFindImage(pkgname, 0xA7615A5D)) // DeletePersona_hotkey
-		FEngSetTextureHash(FEImage, PC_DELETE);
-	if (FEImage = FEngFindImage(pkgname, 0x6E1D75B7)) // Default_hotkey
-		FEngSetTextureHash(FEImage, PC_CREATEROOM);
-	if (FEImage = FEngFindImage(pkgname, 0x83A65176)) // Stock_hotkey
-		FEngSetTextureHash(FEImage, PC_CREATEROOM);
-	if (FEImage = FEngFindImage(pkgname, 0xC8754FA4)) // Performance_hotkey
-		FEngSetTextureHash(FEImage, PC_PERFORMANCE);
-	if (FEImage = FEngFindImage(pkgname, 0xA16A1877)) // Changecolor_hotkey -- during car color changer
-		FEngSetTextureHash(FEImage, PC_X);
-	if (FEImage = FEngFindImage(pkgname, 0xBDD6AEEA)) // DecalColor_hotkey
-		FEngSetTextureHash(FEImage, PC_CREATEROOM);
-	if (FEImage = FEngFindImage(pkgname, 0x548F2015)) // Quit_hotkey
-		FEngSetTextureHash(FEImage, PC_QUIT);
-	if (FEImage = FEngFindImage(pkgname, 0x55DAFA35)) // customize_hotkey
-		FEngSetTextureHash(FEImage, PC_CUSTOM);
-	if (FEImage = FEngFindImage(pkgname, 0x571A8D51)) // Next_hotkey -- the "accept" button
-		FEngSetTextureHash(FEImage, PC_X);
-	if (FEImage = FEngFindImage(pkgname, 0x2A1208C3)) // Back_hotkey
-		FEngSetTextureHash(FEImage, PC_BACK);
-	if (FEImage = FEngFindImage(pkgname, 0x6340B325)) // PC_tutorial_01 (tutorial key)
-		FEngSetTextureHash(FEImage, PC_TUTORIAL);
-	if (FEImage = FEngFindImage(pkgname, 0x6340B326)) // PC_tutorial_02 (tutorial key)
-		FEngSetTextureHash(FEImage, PC_TUTORIAL);
-
-	// set splash screen text
-	if (FEHashUpper(pkgname) == 0x2729D8C3) // if we're in LS_Splash_PC.fng
-	{
-		wcstombs(CurrentSplashText, *(wchar_t**)(FEngFindString("LS_Splash_PC.fng", 0x13CF446D) + 0x60), 0x800);
-		if (FEHashUpper(CurrentSplashText) != 0xE7126192) // "Press enter to continue" -- TODO: multi-lingual support...
-			FEPrintf((void*)FEngFindString("LS_Splash_PC.fng", 0x13CF446D), "Press enter to continue"); // mouse_click text object
-	}
-}
-
-void SetPCIGButtons(char* pkgname)
-{
-	int FEImage = 0;
-	if (FEImage = FEngFindImage(pkgname, 0x571A8D51)) // Next_hotkey -- the "accept" button
-		FEngSetTextureHash(FEImage, PC_X);
-	if (FEImage = FEngFindImage(pkgname, 0x2A1208C3)) // Back_hotkey
-		FEngSetTextureHash(FEImage, PC_BACK);
-	if (FEImage = FEngFindImage(pkgname, 0x548F2015)) // Quit_hotkey
-		FEngSetTextureHash(FEImage, PC_QUIT);
-}
-
-void SetXboxFEButtons(char* pkgname)
-{
-	int FEImage = 0;
-	if (FEImage = FEngFindImage(pkgname, 0x06749436)) // DeleteProfile_hotkey
-		FEngSetTextureHash(FEImage, XBOXY_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0xA7615A5D)) // DeletePersona_hotkey
-		FEngSetTextureHash(FEImage, XBOXY_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x6E1D75B7)) // Default_hotkey
-		FEngSetTextureHash(FEImage, XBOXY_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x83A65176)) // Stock_hotkey
-		FEngSetTextureHash(FEImage, XBOXY_HASH);
-	//if (FEImage = FEngFindImage(pkgname, 0xAD7303C0)) // CreateGame_hotkey
-	//	FEngSetTextureHash(FEImage, XBOXY_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0xC8754FA4)) // Performance_hotkey
-		FEngSetTextureHash(FEImage, XBOXX_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0xA16A1877)) // Changecolor_hotkey -- during car color changer
-		FEngSetTextureHash(FEImage, XBOXA_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0xBDD6AEEA)) // DecalColor_hotkey
-		FEngSetTextureHash(FEImage, XBOXY_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x548F2015)) // Quit_hotkey
-		FEngSetTextureHash(FEImage, XBOXBACK_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x55DAFA35)) // customize_hotkey
-		FEngSetTextureHash(FEImage, XBOXX_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x571A8D51)) // Next_hotkey -- the "accept" button
-		FEngSetTextureHash(FEImage, XBOXA_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x2A1208C3)) // Back_hotkey
-		FEngSetTextureHash(FEImage, XBOXB_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x6340B325)) // PC_tutorial_01 (tutorial key)
-		FEngSetTextureHash(FEImage, XBOXLT_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x6340B326)) // PC_tutorial_02 (tutorial key)
-		FEngSetTextureHash(FEImage, XBOXLT_HASH);
-
-
-	
-	// set splash screen text
-	if (FEHashUpper(pkgname) == 0x2729D8C3) // if we're in LS_Splash_PC.fng
-	{
-		wcstombs(CurrentSplashText, *(wchar_t**)(FEngFindString("LS_Splash_PC.fng", 0x13CF446D) + 0x60), 0x800);
-		if (FEHashUpper(CurrentSplashText) != 0x4741A18D) // "Press MENU/A button"
-			FEPrintf((void*)FEngFindString("LS_Splash_PC.fng", 0x13CF446D), "Press MENU/A button"); // mouse_click text object
-	}
-}
-
-void SetXboxIGButtons(char* pkgname)
-{
-	int FEImage = 0;
-	if (FEImage = FEngFindImage(pkgname, 0x571A8D51)) // Next_hotkey -- the "accept" button
-		FEngSetTextureHash(FEImage, XBOXA_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x2A1208C3)) // Back_hotkey
-		FEngSetTextureHash(FEImage, XBOXB_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x548F2015)) // Quit_hotkey
-		FEngSetTextureHash(FEImage, XBOXBACK_HASH);
-}
-
-void SetPlayStationFEButtons(char* pkgname)
-{
-	int FEImage = 0;
-	if (FEImage = FEngFindImage(pkgname, 0x06749436)) // DeleteProfile_hotkey
-		FEngSetTextureHash(FEImage, PSTRIANGLE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0xA7615A5D)) // DeletePersona_hotkey
-		FEngSetTextureHash(FEImage, PSTRIANGLE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x6E1D75B7)) // Default_hotkey
-		FEngSetTextureHash(FEImage, PSTRIANGLE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x83A65176)) // Stock_hotkey
-		FEngSetTextureHash(FEImage, PSTRIANGLE_HASH);
-	//if (FEImage = FEngFindImage(pkgname, 0xAD7303C0)) // CreateGame_hotkey
-	//	FEngSetTextureHash(FEImage, PSTRIANGLE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0xC8754FA4)) // Performance_hotkey
-		FEngSetTextureHash(FEImage, PSSQUARE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0xA16A1877)) // Changecolor_hotkey -- during car color changer
-		FEngSetTextureHash(FEImage, PSCROSS_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0xBDD6AEEA)) // DecalColor_hotkey
-		FEngSetTextureHash(FEImage, PSTRIANGLE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x548F2015)) // Quit_hotkey
-		FEngSetTextureHash(FEImage, PSSHARE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x55DAFA35)) // customize_hotkey
-		FEngSetTextureHash(FEImage, PSSQUARE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x571A8D51)) // Next_hotkey -- the "accept" button
-		FEngSetTextureHash(FEImage, PSCROSS_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x2A1208C3)) // Back_hotkey
-		FEngSetTextureHash(FEImage, PSCIRCLE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x6340B325)) // PC_tutorial_01 (tutorial key)
-		FEngSetTextureHash(FEImage, PSL2_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x6340B326)) // PC_tutorial_02 (tutorial key)
-		FEngSetTextureHash(FEImage, PSL2_HASH);
-
-	// set splash screen text
-	if (FEHashUpper(pkgname) == 0x2729D8C3) // if we're in LS_Splash_PC.fng
-	{
-		wcstombs(CurrentSplashText, *(wchar_t**)(FEngFindString("LS_Splash_PC.fng", 0x13CF446D) + 0x60), 0x800);
-		if (FEHashUpper(CurrentSplashText) != 0xB1253D5B) // "Press OPTIONS/X button"
-			FEPrintf((void*)FEngFindString("LS_Splash_PC.fng", 0x13CF446D), "Press OPTIONS/X button"); // mouse_click text object
-	}
-}
-
-void SetPlayStationIGButtons(char* pkgname)
-{
-	int FEImage = 0;
-	if (FEImage = FEngFindImage(pkgname, 0x571A8D51)) // Next_hotkey -- the "accept" button
-		FEngSetTextureHash(FEImage, PSCROSS_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x2A1208C3)) // Back_hotkey
-		FEngSetTextureHash(FEImage, PSCIRCLE_HASH);
-	if (FEImage = FEngFindImage(pkgname, 0x548F2015)) // Quit_hotkey
-		FEngSetTextureHash(FEImage, PSSHARE_HASH);
-}
-
-void __stdcall SetControllerFEng(char* pkgname)
-{
-	if (!bLoadedConsoleButtonTex)
-	{
-		LoadResourceFile("GLOBAL\\UG_ConsoleButtons.tpk", RESOURCE_FILE_NONE, 0, NULL, 0, 0, 0);
-		ServiceResourceLoading();
-		bLoadedConsoleButtonTex = true;
-	}
-
-	if (*(int*)GAMEFLOWMANAGER_STATUS_ADDR == 3)
-	{
-		if (LastControlledDevice == LASTCONTROLLED_CONTROLLER)
-		{
-			switch (ControllerIconMode)
-			{
-			case CONTROLLERICON_PS4:
-				SetPlayStationFEButtons(pkgname);
-				break;
-			case CONTROLLERICON_XBOXONE:
-			default:
-				SetXboxFEButtons(pkgname);
-				break;
-			}
-		}
-		if (LastControlledDevice == LASTCONTROLLED_KB)
-			SetPCFEButtons(pkgname);
-
-	}
-	if (*(int*)GAMEFLOWMANAGER_STATUS_ADDR == 6)
-	{
-		if (LastControlledDevice == LASTCONTROLLED_CONTROLLER)
-		{
-			switch (ControllerIconMode)
-			{
-			case CONTROLLERICON_PS4:
-				SetPlayStationIGButtons(pkgname);
-				break;
-			case CONTROLLERICON_XBOXONE:
-			default:
-				SetXboxIGButtons(pkgname);
-				break;
-			}
-		}
-		if (LastControlledDevice == LASTCONTROLLED_KB)
-			SetPCIGButtons(pkgname);
-	}
-}
-
-// entrypoint: 0x004F7C08
-unsigned int FEngGlobalCaveExit = 0x004F7C0E;
-unsigned int FEngGlobalCaveEBP = 0;
-unsigned int FEngGlobalCaveESI = 0;
-char* CurrentFEngPackage = NULL;
-void __declspec(naked) FEngGlobalCave()
-{
-	_asm mov FEngGlobalCaveEBP, ebp
-	_asm mov FEngGlobalCaveESI, esi
-	CurrentFEngPackage = *(char**)(FEngGlobalCaveESI + 0xC);
-	SetControllerFEng(CurrentFEngPackage);
-	_asm
-	{
-		mov esi, FEngGlobalCaveESI
-		mov ebp, FEngGlobalCaveEBP
-		cmp ebp, 0xC519BFC3
-		jmp FEngGlobalCaveExit
-	}
-}
-
+void(*InitJoystick)() = (void(*)())0x005741C0;
 void DummyFunc()
 {
 	return;
+}
+
+int bStringHash(char* a1)
+{
+	char* v1; // edx@1
+	char v2; // cl@1
+	int result; // eax@1
+
+	v1 = a1;
+	v2 = *a1;
+	for (result = -1; v2; ++v1)
+	{
+		result = v2 + 33 * result;
+		v2 = v1[1];
+	}
+	return result;
+}
+
+
+//////////////////////////////////////////////////////////////////
+// Scanner functions
+//////////////////////////////////////////////////////////////////
+int Scanner_DigitalUpOrDown_XInput(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
+
+	//printf("Scanner: %x %x %x %x %x\n", EventNode, unk1, unk2, inScannerConfig, Joystick);
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	if ((wButtons & inScannerConfig->BitmaskStuff) != EventStates[ci][inScannerConfig->JoyEvent])
+	{
+		// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+		if ((wButtons & inScannerConfig->BitmaskStuff))
+		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (wButtons & inScannerConfig->BitmaskStuff);
+			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+		}
+		// on change to FALSE -- return JoyEvent number
+		if (!(wButtons & inScannerConfig->BitmaskStuff))
+		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (wButtons & inScannerConfig->BitmaskStuff);
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+int Scanner_DigitalUpOrDown_RawKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	// throttle is very time sensitive, so we return all the time
+	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_STEER_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_STEER))
+	{
+
+		if (VKeyStates[ci][inScannerConfig->keycode])
+		{
+			EventStatesKB[ci][inScannerConfig->JoyEvent] = VKeyStates[ci][inScannerConfig->keycode];
+			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+		}
+
+		if (!VKeyStates[ci][inScannerConfig->keycode])
+		{
+			EventStatesKB[ci][inScannerConfig->JoyEvent] = VKeyStates[ci][inScannerConfig->keycode];
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	if ((VKeyStates[ci][inScannerConfig->keycode]) != EventStatesKB[ci][inScannerConfig->JoyEvent])
+	{
+		// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+		if (VKeyStates[ci][inScannerConfig->keycode])
+		{
+			EventStatesKB[ci][inScannerConfig->JoyEvent] = VKeyStates[ci][inScannerConfig->keycode];
+			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+		}
+		// on change to FALSE -- return JoyEvent number
+		if (!VKeyStates[ci][inScannerConfig->keycode])
+		{
+			EventStatesKB[ci][inScannerConfig->JoyEvent] = VKeyStates[ci][inScannerConfig->keycode];
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+int Scanner_DigitalUpOrDown_SyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	bool bKeyState = VKeyStates[0][inScannerConfig->keycode] >> 7;
+
+	// throttle is very time sensitive, so we return all the time
+	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_STEER_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_STEER))
+	{
+		if (bKeyState)
+		{
+			EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+		}
+
+		if (!bKeyState)
+		{
+			EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	if ((bKeyState) != EventStatesKB[0][inScannerConfig->JoyEvent])
+	{
+		// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+		if (bKeyState)
+		{
+			EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+		}
+		// on change to FALSE -- return JoyEvent number
+		if (!bKeyState)
+		{
+			EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+int Scanner_DigitalUpOrDown_AsyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	bool bKeyState = GetAsyncKeyState(inScannerConfig->keycode) >> 15;
+
+	// throttle/brake is very time sensitive, so we return all the time
+	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
+	{
+		if (bKeyState)
+		{
+			EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+		}
+
+		if (!bKeyState)
+		{
+			EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	if (bKeyState != EventStatesKB[0][inScannerConfig->JoyEvent])
+	{
+		// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+		if (bKeyState)
+		{
+			EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+		}
+		// on change to FALSE -- return JoyEvent number
+		if (!bKeyState)
+		{
+			EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+int Scanner_DigitalUpOrDown_KB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	switch (KeyboardReadingMode)
+	{
+	case KB_READINGMODE_UNBUFFERED_RAW:
+		return Scanner_DigitalUpOrDown_RawKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	case KB_READINGMODE_BUFFERED:
+		return Scanner_DigitalUpOrDown_SyncKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	case KB_READINGMODE_UNBUFFERED_ASYNC:
+	default:
+		return Scanner_DigitalUpOrDown_AsyncKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	}
+}
+
+int Scanner_DigitalUpOrDown(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	return Scanner_DigitalUpOrDown_XInput(EventNode, unk1, unk2, inScannerConfig, Joystick) | Scanner_DigitalUpOrDown_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+}
+
+int Scanner_DigitalSteer(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
+
+	// D-Pad steering
+	// we only accept dpad in this case (and read left/right), if it's any other button, ignore
+	if (inScannerConfig->BitmaskStuff2 != XINPUT_GAMEPAD_DPAD_CONFIGDEF)
+		return inScannerConfig->JoyEvent + ((inScannerConfig->param / 2) << 8);
+	// if a direction is pressed
+	if (((wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)) != EventStates[ci][inScannerConfig->JoyEvent])
+	{
+		// on change to TRUE
+		if ((wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT))
+		{
+			if ((wButtons & XINPUT_GAMEPAD_DPAD_LEFT))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
+				return inScannerConfig->JoyEvent; // steer left = 0
+			}
+			if ((wButtons & XINPUT_GAMEPAD_DPAD_RIGHT))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8); // steer right = max param = 0xFF
+			}
+		}
+		// on change to FALSE -- return JoyEvent number + parameter / 2 = center
+		if (!((wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)))
+		{
+			EventStates[ci][inScannerConfig->JoyEvent] = ((wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT));
+			return inScannerConfig->JoyEvent + ((inScannerConfig->param / 2) << 8); // center steer = param / 2 = 0x7F
+		}
+	}
+
+	return 0;
+}
+
+int Scanner_DigitalSteer_RawKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	unsigned int outparam = inScannerConfig->param / 2;
+
+	// if a direction is pressed
+	if ((VKeyStates[ci][SteerLeftVKey] || VKeyStates[ci][SteerRightVKey]))
+	{
+		if (VKeyStates[ci][SteerLeftVKey])
+			outparam = outparam - inScannerConfig->param / 2;
+		if (VKeyStates[ci][SteerRightVKey])
+			outparam = outparam + inScannerConfig->param / 2;
+	}
+		
+	return inScannerConfig->JoyEvent + (outparam << 8);
+}
+
+int Scanner_DigitalSteer_SyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	bool bKeyStateLeft = VKeyStates[0][SteerLeftVKey] >> 7;
+	bool bKeyStateRight = VKeyStates[0][SteerRightVKey] >> 7;
+	unsigned int outparam = inScannerConfig->param / 2;
+
+	// if a direction is pressed
+	if ((bKeyStateLeft || bKeyStateRight))
+	{
+		if (bKeyStateLeft)
+			outparam = outparam - inScannerConfig->param / 2;
+		if (bKeyStateRight)
+			outparam = outparam + inScannerConfig->param / 2;
+	}
+
+	return inScannerConfig->JoyEvent + (outparam << 8);
+}
+
+int Scanner_DigitalSteer_AsyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	bool bKeyStateLeft = GetAsyncKeyState(SteerLeftVKey) >> 15;
+	bool bKeyStateRight = GetAsyncKeyState(SteerRightVKey) >> 15;
+	unsigned int outparam = inScannerConfig->param / 2;
+
+	// if a direction is pressed
+	if ((bKeyStateLeft || bKeyStateRight))
+	{
+		if (bKeyStateLeft)
+			outparam = outparam - inScannerConfig->param / 2;
+		if (bKeyStateRight)
+			outparam = outparam + inScannerConfig->param / 2;
+	}
+
+	return inScannerConfig->JoyEvent + (outparam << 8);
+}
+
+int Scanner_DigitalSteer_KB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	switch (KeyboardReadingMode)
+	{
+	case KB_READINGMODE_UNBUFFERED_RAW:
+		return Scanner_DigitalSteer_RawKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	case KB_READINGMODE_BUFFERED:
+		return Scanner_DigitalSteer_SyncKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	case KB_READINGMODE_UNBUFFERED_ASYNC:
+	default:
+		return Scanner_DigitalSteer_AsyncKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	}
+}
+
+// same thing as DigitalUpOrDown except no KEY UP detection, only KEY DOWN
+int Scanner_DigitalDown_XInput(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	if ((wButtons & inScannerConfig->BitmaskStuff) != EventStates[ci][inScannerConfig->JoyEvent])
+	{
+		EventStates[ci][inScannerConfig->JoyEvent] = (wButtons & inScannerConfig->BitmaskStuff);
+		// on change to TRUE -- return event
+		if ((wButtons & inScannerConfig->BitmaskStuff))
+		{
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+// same thing as DigitalUpOrDown except no KEY UP detection, only KEY DOWN
+int Scanner_DigitalDown_RawKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	if ((VKeyStates[ci][inScannerConfig->keycode]) != EventStatesKB[ci][inScannerConfig->JoyEvent])
+	{
+		EventStatesKB[ci][inScannerConfig->JoyEvent] = (VKeyStates[ci][inScannerConfig->keycode]);
+		// on change to TRUE -- return event
+		if ((VKeyStates[ci][inScannerConfig->keycode]))
+		{
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+int Scanner_DigitalDown_SyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	bool bKeyState = VKeyStates[0][inScannerConfig->keycode] >> 7;
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	if (bKeyState != EventStatesKB[0][inScannerConfig->JoyEvent])
+	{
+		EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+		// on change to TRUE -- return event
+		if (bKeyState)
+		{
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+int Scanner_DigitalDown_AsyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	bool bKeyState = GetAsyncKeyState(inScannerConfig->keycode) >> 15;
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	if (bKeyState != EventStatesKB[0][inScannerConfig->JoyEvent])
+	{
+		EventStatesKB[0][inScannerConfig->JoyEvent] = bKeyState;
+		// on change to TRUE -- return event
+		if (bKeyState)
+		{
+			return inScannerConfig->JoyEvent;
+		}
+	}
+
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+int Scanner_DigitalDown_KB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	switch (KeyboardReadingMode)
+	{
+	case KB_READINGMODE_UNBUFFERED_RAW:
+		return Scanner_DigitalDown_RawKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	case KB_READINGMODE_BUFFERED:
+		return Scanner_DigitalDown_SyncKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	case KB_READINGMODE_UNBUFFERED_ASYNC:
+	default:
+		return Scanner_DigitalDown_AsyncKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	}
+}
+
+int Scanner_DigitalDown(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	return Scanner_DigitalDown_XInput(EventNode, unk1, unk2, inScannerConfig, Joystick) | Scanner_DigitalDown_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+}
+
+// when an analog axis is assigned to a digital-only function
+int Scanner_DigitalAnalog_XInput(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	WORD threshold = FEUPDOWN_ANALOG_THRESHOLD;
+	if (inScannerConfig->JoyEvent == JOY_EVENT_SHIFTUP || inScannerConfig->JoyEvent == JOY_EVENT_SHIFTDOWN || inScannerConfig->JoyEvent == JOY_EVENT_SHIFTUP_ALTERNATE || inScannerConfig->JoyEvent == JOY_EVENT_SHIFTDOWN_ALTERNATE)
+		threshold = SHIFT_ANALOG_THRESHOLD;
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	switch (inScannerConfig->BitmaskStuff2)
+	{
+	case XINPUT_GAMEPAD_LT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_LS_UP_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbLY > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbLY > threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY > threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.sThumbLY > threshold))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY > threshold);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbLY < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbLY < -threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY < -threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.sThumbLY < -threshold))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY < -threshold);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbLX < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbLX < -threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX < -threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.sThumbLX < -threshold))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX < -threshold);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbLX > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbLX > threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX > threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.sThumbLX > threshold))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX > threshold);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RS_UP_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbRY > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbRY > threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY > threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.sThumbRY > threshold))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY > threshold);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbRY < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbRY < -threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY < -threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.sThumbRY < -threshold))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY < -threshold);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbRX < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbRX < -threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX < -threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.sThumbRX < -threshold))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX < -threshold);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbRX > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbRX > threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX > threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			// on change to FALSE -- return JoyEvent number
+			if (!(g_Controllers[ci].state.Gamepad.sThumbRX > threshold))
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX > threshold);
+				return inScannerConfig->JoyEvent;
+			}
+			return 0;
+		}
+		break;
+	}
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+int Scanner_DigitalAnalog(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	return Scanner_DigitalAnalog_XInput(EventNode, unk1, unk2, inScannerConfig, Joystick) | Scanner_DigitalUpOrDown_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+}
+
+int Scanner_DigitalAnyButton(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	if ((wButtons) != EventStates[ci][inScannerConfig->JoyEvent])
+	{
+		// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+		if ((wButtons))
+		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (wButtons);
+			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+		}
+		// on change to FALSE -- return JoyEvent number
+		if (!(wButtons & inScannerConfig->BitmaskStuff))
+		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (wButtons);
+			return inScannerConfig->JoyEvent;
+		}
+	}
+	
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+
+}
+
+int Scanner_Analog(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	BYTE axis = 0;
+
+	switch (inScannerConfig->BitmaskStuff2)
+	{
+	case XINPUT_GAMEPAD_LT_CONFIGDEF:
+		axis = g_Controllers[ci].state.Gamepad.bLeftTrigger;
+		break;
+	case XINPUT_GAMEPAD_RT_CONFIGDEF:
+		axis = g_Controllers[ci].state.Gamepad.bRightTrigger;
+		break;
+	case XINPUT_GAMEPAD_LS_X_CONFIGDEF:
+		axis = (char)(((float)(g_Controllers[ci].state.Gamepad.sThumbLX) / (float)(0x7FFF)) * (float)(0x7F)) + 0x80;
+		break;
+	case XINPUT_GAMEPAD_RS_X_CONFIGDEF:
+		axis = (char)(((float)(g_Controllers[ci].state.Gamepad.sThumbRX) / (float)(0x7FFF)) * (float)(0x7F)) + 0x80;
+		break;
+	case XINPUT_GAMEPAD_LS_Y_CONFIGDEF:
+		axis = (char)(((float)(g_Controllers[ci].state.Gamepad.sThumbLY) / (float)(0x7FFF)) * (float)(0x7F)) + 0x80;
+		break;
+	case XINPUT_GAMEPAD_RS_Y_CONFIGDEF:
+		axis = (char)(((float)(g_Controllers[ci].state.Gamepad.sThumbRY) / (float)(0x7FFF)) * (float)(0x7F)) + 0x80;
+		break;
+	default:
+		break;
+	}
+
+	// invert some broken axis
+	if (inScannerConfig->JoyEvent == JOY_EVENT_DEBUG_CAMERA_INOUT)
+		axis = -axis;
+	if (inScannerConfig->JoyEvent == JOY_EVENT_CARSEL_ORBIT_UPDOWN)
+		axis = -axis;
+
+	if ((axis != EventStates[ci][inScannerConfig->JoyEvent]) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
+	{
+		EventStates[ci][inScannerConfig->JoyEvent] = axis;
+		return inScannerConfig->JoyEvent + (axis << 8);
+	}
+
+	return 0;
+}
+
+int Scanner_Analog_DragSteer(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == 0x73B3EC)
+		ci = 1;
+
+	BYTE axis = 0;
+	char signed_axis = 0;
+
+	switch (inScannerConfig->BitmaskStuff2)
+	{
+	case XINPUT_GAMEPAD_LS_X_CONFIGDEF:
+		axis = (BYTE)(((float)(g_Controllers[ci].state.Gamepad.sThumbLX) / (float)(0x7FFF)) * (float)(0x7F));
+		break;
+	case XINPUT_GAMEPAD_RS_X_CONFIGDEF:
+		axis = (BYTE)(((float)(g_Controllers[ci].state.Gamepad.sThumbRX) / (float)(0x7FFF)) * (float)(0x7F));
+		break;
+	case XINPUT_GAMEPAD_LS_Y_CONFIGDEF:
+		axis = (BYTE)(((float)(g_Controllers[ci].state.Gamepad.sThumbLY) / (float)(0x7FFF)) * (float)(0x7F));
+		break;
+	case XINPUT_GAMEPAD_RS_Y_CONFIGDEF:
+		axis = (BYTE)(((float)(g_Controllers[ci].state.Gamepad.sThumbRY) / (float)(0x7FFF)) * (float)(0x7F));
+		break;
+	default:
+		return 0;
+	}
+	signed_axis = axis;
+
+	if (axis != EventStates[ci][inScannerConfig->JoyEvent])
+	{
+		EventStates[ci][inScannerConfig->JoyEvent] = axis;
+		if ((inScannerConfig->JoyEvent == JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT_ANALOG) && signed_axis < 0)
+			return inScannerConfig->JoyEvent + (axis << 8);
+		if ((inScannerConfig->JoyEvent == JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT_ANALOG) && signed_axis > 0)
+			return inScannerConfig->JoyEvent + (axis << 8);
+	}
+	return 0;
+}
+
+int Scanner_CombinedSteering(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int result = Scanner_Analog(EventNode, unk1, unk2, inScannerConfig, Joystick);
+
+	if (LastControlledDevice == LASTCONTROLLED_KB)
+		return Scanner_DigitalSteer_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+
+	return result;
+}
+
+int Scanner_CombinedDigitalSteering(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	if (LastControlledDevice == LASTCONTROLLED_KB)
+		return Scanner_DigitalSteer_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+
+	return Scanner_DigitalSteer(EventNode, unk1, unk2, inScannerConfig, Joystick);
+}
+
+int Scanner_TypeChanged(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	return 0;
+}
+
+void SetupScannerConfig()
+{
+	CIniReader inireader("");
+
+	unsigned int inXInputConfigDef = 0;
+
+	for (unsigned int i = 0; i < MAX_JOY_EVENT; i++)
+	{
+		ScannerConfigs[i].JoyEvent = i;
+		ScannerConfigs[i].param = 0xFF;
+		// keyboard VK codes
+		ScannerConfigs[i].keycode = ConvertVKNameToValue(inireader.ReadString("EventsKB", JoyEventNames[i], ""));
+		if (ScannerConfigs[i].keycode == 0)
+		{
+			// try checking for single-char
+			char lettercheck[32];
+			strcpy(lettercheck, inireader.ReadString("EventsKB", JoyEventNames[i], ""));
+			if (strlen(lettercheck) == 1)
+				ScannerConfigs[i].keycode = toupper(lettercheck[0]);
+		}
+
+		inXInputConfigDef = ConvertXInputOtherConfigDef(inireader.ReadString("Events", JoyEventNames[i], ""));
+		if (!inXInputConfigDef)
+		{
+			if (bIsEventDigitalDownOnly(i))
+				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalDown;
+			else
+				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalUpOrDown;
+
+			ScannerConfigs[i].BitmaskStuff = ConvertXInputNameToBitmask(inireader.ReadString("Events", JoyEventNames[i], ""));
+		}
+		else
+		{
+			// triggers or sticks or dpad
+			ScannerConfigs[i].BitmaskStuff2 = inXInputConfigDef;
+
+			if (bIsEventAnalog(i))
+				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_Analog;
+			else if ((inXInputConfigDef != XINPUT_GAMEPAD_DPAD_CONFIGDEF))
+				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalAnalog;
+			// this is horribly broken, drag analog steering goes across all lanes...
+			if ((i == JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT_ANALOG) || (i == JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT_ANALOG))
+				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_Analog_DragSteer;
+		}
+
+		// JOY_EVENT_STEER
+		if (i == JOY_EVENT_STEER)
+		{
+			if (inXInputConfigDef == XINPUT_GAMEPAD_DPAD_CONFIGDEF)
+				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_CombinedDigitalSteering;
+			else
+				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_CombinedSteering;
+		}
+	}
+	ScannerConfigs[JOY_EVENT_TYPE_CHANGED].ScannerFunctionPointer = (unsigned int)&Scanner_TypeChanged;
+	//ScannerConfigs[JOY_EVENT_ANY].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalAnyButton;
+
+	// read steering VK codes
+	SteerLeftVKey = ConvertVKNameToValue(inireader.ReadString("EventsKB", "KeyboardSteerLeft", "VK_LEFT"));
+	if (SteerLeftVKey == 0)
+	{
+		// try checking for single-char
+		char lettercheck[32];
+		strcpy(lettercheck, inireader.ReadString("EventsKB", "KeyboardSteerLeft", "VK_LEFT"));
+			if (strlen(lettercheck) == 1)
+				SteerLeftVKey = toupper(lettercheck[0]);
+	}
+	SteerRightVKey = ConvertVKNameToValue(inireader.ReadString("EventsKB", "KeyboardSteerRight", "VK_RIGHT"));
+	if (SteerRightVKey == 0)
+	{
+		// try checking for single-char
+		char lettercheck[32];
+		strcpy(lettercheck, inireader.ReadString("EventsKB", "KeyboardSteerRight", "VK_RIGHT"));
+		if (strlen(lettercheck) == 1)
+			SteerRightVKey = toupper(lettercheck[0]);
+	}
+}
+
+//////////////////////////////////////////////////////////////////
+// Scanner functions END
+//////////////////////////////////////////////////////////////////
+
+void InitCustomKBInput()
+{
+	InitJoystick();
+	*(int*)JOYSTICK_P1_CONNECTION_STATUS_ADDR = 1; // without this, game doesn't want to read anything
+
+	if (KeyboardReadingMode == KB_READINGMODE_UNBUFFERED_RAW)
+	{
+		Rid.usUsagePage = 0x01;          // HID_USAGE_PAGE_GENERIC
+		Rid.usUsage = 0x06;              // HID_USAGE_GENERIC_KEYBOARD
+		Rid.dwFlags = 0;    // adds keyboard and also ignores legacy keyboard messages
+		Rid.hwndTarget = *(HWND*)GAME_HWND_ADDR;
+
+		RegisterRawInputDevices(&Rid, 1, sizeof(Rid));
+	}
 }
 
 HRESULT UpdateControllerState()
@@ -514,29 +1082,8 @@ HRESULT UpdateControllerState()
 	dwResult = XInputGetState(0, &g_Controllers[0].state);
 
 	if (dwResult == ERROR_SUCCESS)
-		g_Controllers[0].bConnected = true;
-	else
-		g_Controllers[0].bConnected = false;
-
-	dwResult = XInputGetState(1, &g_Controllers[1].state);
-
-	if (dwResult == ERROR_SUCCESS)
-		g_Controllers[1].bConnected = true;
-	else
-		g_Controllers[1].bConnected = false;
-
-	return S_OK;
-}
-
-void ReadXInput()
-{
-	std::bitset<32> b1(*(int*)JOYBUTTONS1_ADDR);
-	std::bitset<32> b2(*(int*)JOYBUTTONS2_ADDR);
-	bool bLastWasKeyboard = false;
-
-	if (g_Controllers[0].bConnected)
 	{
-		WORD wButtons = g_Controllers[0].state.Gamepad.wButtons;
+		g_Controllers[0].bConnected = true;
 
 		// Zero value if thumbsticks are within the dead zone 
 		if ((g_Controllers[0].state.Gamepad.sThumbLX < INPUT_DEADZONE &&
@@ -557,99 +1104,68 @@ void ReadXInput()
 			g_Controllers[0].state.Gamepad.sThumbRY = 0;
 		}
 
-		if (wButtons || g_Controllers[0].state.Gamepad.sThumbLX || g_Controllers[0].state.Gamepad.sThumbLY || g_Controllers[0].state.Gamepad.sThumbRX || g_Controllers[0].state.Gamepad.sThumbRY || g_Controllers[0].state.Gamepad.bRightTrigger || g_Controllers[0].state.Gamepad.bLeftTrigger)
+		if (g_Controllers[0].state.Gamepad.wButtons || g_Controllers[0].state.Gamepad.sThumbLX || g_Controllers[0].state.Gamepad.sThumbLY || g_Controllers[0].state.Gamepad.sThumbRX || g_Controllers[0].state.Gamepad.sThumbRY || g_Controllers[0].state.Gamepad.bRightTrigger || g_Controllers[0].state.Gamepad.bLeftTrigger)
 			LastControlledDevice = LASTCONTROLLED_CONTROLLER;
 
-		*(unsigned char*)THROTTLE_AXIS_ADDR = g_Controllers[0].state.Gamepad.bRightTrigger;
-		*(unsigned char*)BRAKE_AXIS_ADDR = g_Controllers[0].state.Gamepad.bLeftTrigger;
-		*(char*)STEER_AXIS_ADDR = (char)(((float)(g_Controllers[0].state.Gamepad.sThumbLX) / (float)(0x7FFF)) * (float)(0x7F)) + 0x80;
+	}
+	else
+	{
+		g_Controllers[0].bConnected = false;
+	}
+
+	dwResult = XInputGetState(1, &g_Controllers[1].state);
+
+	if (dwResult == ERROR_SUCCESS)
+	{
+		g_Controllers[1].bConnected = true;
+		* (unsigned char*)JOYSTICKTYPE_P2_ADDR = 0;
+		// Zero value if thumbsticks are within the dead zone 
+		if ((g_Controllers[1].state.Gamepad.sThumbLX < INPUT_DEADZONE &&
+			g_Controllers[1].state.Gamepad.sThumbLX > -INPUT_DEADZONE) &&
+			(g_Controllers[1].state.Gamepad.sThumbLY < INPUT_DEADZONE &&
+				g_Controllers[1].state.Gamepad.sThumbLY > -INPUT_DEADZONE))
+		{
+			g_Controllers[1].state.Gamepad.sThumbLX = 0;
+			g_Controllers[1].state.Gamepad.sThumbLY = 0;
+		}
+
+		if ((g_Controllers[1].state.Gamepad.sThumbRX < INPUT_DEADZONE &&
+			g_Controllers[1].state.Gamepad.sThumbRX > -INPUT_DEADZONE) &&
+			(g_Controllers[1].state.Gamepad.sThumbRY < INPUT_DEADZONE &&
+				g_Controllers[1].state.Gamepad.sThumbRY > -INPUT_DEADZONE))
+		{
+			g_Controllers[1].state.Gamepad.sThumbRX = 0;
+			g_Controllers[1].state.Gamepad.sThumbRY = 0;
+		}
+	}
+	else
+	{
+		g_Controllers[1].bConnected = false;
+		if (SecondKB == NULL)
+			*(unsigned char*)JOYSTICKTYPE_P2_ADDR = 0xFF;
+	}
+
+	// check controller & KB state for P1
+	if (KeyboardState || g_Controllers[0].bConnected)
+		*(unsigned char*)JOYSTICKTYPE_P1_ADDR = 0;
+	else
+		*(unsigned char*)JOYSTICKTYPE_P1_ADDR = 0xFF;
 	
-		b1[NFSUJOY_DIGITAL_LEFT] = b1[NFSUJOY_DIGITAL_LEFT] ? !(wButtons & XINPUT_GAMEPAD_DPAD_LEFT) : b1[NFSUJOY_DIGITAL_LEFT];
-		b1[NFSUJOY_DIGITAL_RIGHT] = b1[NFSUJOY_DIGITAL_RIGHT] ? !(wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) : b1[NFSUJOY_DIGITAL_RIGHT];
 
-		b1[NFSUJOY_PAUSE] = b1[NFSUJOY_PAUSE] ? !(wButtons & XINPUT_GAMEPAD_START) : b1[NFSUJOY_PAUSE];
-		b1[NFSUJOY_NOS] = b1[NFSUJOY_NOS] ? !(wButtons & XINPUT_GAMEPAD_B) : b1[NFSUJOY_NOS];
-		b1[NFSUJOY_EBRAKE] = b1[NFSUJOY_EBRAKE] ? !(wButtons & XINPUT_GAMEPAD_A) : b1[NFSUJOY_EBRAKE];
-		b1[NFSUJOY_RESETCAR] = b1[NFSUJOY_RESETCAR] ? !(wButtons & XINPUT_GAMEPAD_BACK) : b1[NFSUJOY_RESETCAR];
-		b1[NFSUJOY_LOOKBACK] = b1[NFSUJOY_LOOKBACK] ? !(wButtons & XINPUT_GAMEPAD_X) : b1[NFSUJOY_LOOKBACK];
-		b1[NFSUJOY_CHANGECAM] = b1[NFSUJOY_CHANGECAM] ? !(wButtons & XINPUT_GAMEPAD_Y) : b1[NFSUJOY_CHANGECAM];
-		b1[NFSUJOY_SHIFTUP] = b1[NFSUJOY_SHIFTUP] ? !(g_Controllers[0].state.Gamepad.sThumbRY > SHIFT_ANALOG_THRESHOLD) : b1[NFSUJOY_SHIFTUP];
-		b1[NFSUJOY_SHIFTDOWN] = b1[NFSUJOY_SHIFTDOWN] ? !(g_Controllers[0].state.Gamepad.sThumbRY < -SHIFT_ANALOG_THRESHOLD) : b1[NFSUJOY_SHIFTDOWN];
+	return S_OK;
+}
 
-		b1[NFSUJOY_FE_UP] = b1[NFSUJOY_FE_UP] ? !(wButtons & XINPUT_GAMEPAD_DPAD_UP) : b1[NFSUJOY_FE_UP];
-		b1[NFSUJOY_FE_DOWN] = b1[NFSUJOY_FE_DOWN] ? !(wButtons & XINPUT_GAMEPAD_DPAD_DOWN) : b1[NFSUJOY_FE_DOWN];
-		b1[NFSUJOY_FE_UP] = b1[NFSUJOY_FE_UP] ? !(g_Controllers[0].state.Gamepad.sThumbLY > FEUPDOWN_ANALOG_THRESHOLD) : b1[NFSUJOY_FE_UP];
-		b1[NFSUJOY_FE_DOWN] = b1[NFSUJOY_FE_DOWN] ? !(g_Controllers[0].state.Gamepad.sThumbLY < -FEUPDOWN_ANALOG_THRESHOLD) : b1[NFSUJOY_FE_DOWN];
-		
-		b1[NFSUJOY_FE_LEFT] = b1[NFSUJOY_FE_LEFT] ? !(wButtons & XINPUT_GAMEPAD_DPAD_LEFT) : b1[NFSUJOY_FE_LEFT];
-		b1[NFSUJOY_FE_RIGHT] = b1[NFSUJOY_FE_RIGHT] ? !(wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) : b1[NFSUJOY_FE_RIGHT];
-		b1[NFSUJOY_FE_ACCEPT] = b1[NFSUJOY_FE_ACCEPT] ? !(wButtons & XINPUT_GAMEPAD_A) : b1[NFSUJOY_FE_ACCEPT];
-		b1[NFSUJOY_FE_BACK] = b1[NFSUJOY_FE_BACK] ? !(wButtons & XINPUT_GAMEPAD_B) : b1[NFSUJOY_FE_BACK];
-		b1[NFSUJOY_FE_BIT24] = b1[NFSUJOY_FE_BIT24] ? !(wButtons & XINPUT_GAMEPAD_X) : b1[NFSUJOY_FE_BIT24];
-		b1[NFSUJOY_FE_BIT22] = b1[NFSUJOY_FE_BIT22] ? !(wButtons & XINPUT_GAMEPAD_Y) : b1[NFSUJOY_FE_BIT22];
-		b1[NFSUJOY_FE_L1] = b1[NFSUJOY_FE_L1] ? !(wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) : b1[NFSUJOY_FE_L1];
-		b1[NFSUJOY_FE_R1] = b1[NFSUJOY_FE_R1] ? !(wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) : b1[NFSUJOY_FE_R1];
-		b1[NFSUJOY_FE_L2] = b1[NFSUJOY_FE_L2] ? !(g_Controllers[0].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD) : b1[NFSUJOY_FE_L2];
-		b1[NFSUJOY_FE_R2] = b1[NFSUJOY_FE_R2] ? !(g_Controllers[0].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD) : b1[NFSUJOY_FE_R2];
-		// splash screen start button
-		if (FEHashUpper(LastFEngPackage) == 0x2729D8C3)
-			b1[NFSUJOY_FE_ACCEPT] = b1[NFSUJOY_FE_ACCEPT] ? !(wButtons & XINPUT_GAMEPAD_START) : b1[NFSUJOY_FE_ACCEPT];
+// old function -- repurposed to send keyboard-exclusive commands to the game
+void ReadXInput_Extra()
+{
+	if (g_Controllers[0].bConnected)
+	{
+		WORD wButtons = g_Controllers[0].state.Gamepad.wButtons;
 
-		// car orbiting
-		if ((g_Controllers[0].state.Gamepad.sThumbRX != 0) || (g_Controllers[0].state.Gamepad.sThumbRY != 0))
-		{
-			bOrbitingWithRightStick = true;
-			if (g_Controllers[0].state.Gamepad.sThumbRX != 0)
-				*(int*)FEMOUSECURSOR_CARORBIT_X_ADDR = -g_Controllers[0].state.Gamepad.sThumbRX;
-			if (g_Controllers[0].state.Gamepad.sThumbRY != 0)
-				*(int*)FEMOUSECURSOR_CARORBIT_Y_ADDR = g_Controllers[0].state.Gamepad.sThumbRY;
-			CarOrbitDivisor = 0.000031f;
-		}
-		else
-		{
-			bOrbitingWithRightStick = false;
-			CarOrbitDivisor = 0.5;
-			if (!*(bool*)FEMOUSECURSOR_BUTTONPRESS_ADDR)
-			{
-				*(int*)FEMOUSECURSOR_CARORBIT_X_ADDR = 0;
-				*(int*)FEMOUSECURSOR_CARORBIT_Y_ADDR = 0;
-			}
-		}
-		if (*(bool*)FEMOUSECURSOR_BUTTONPRESS_ADDR)
-			CarOrbitDivisor = 0.5;
-
-		// tester
-		//b2[NFSUJOY_BIT33] = !(wButtons & XINPUT_GAMEPAD_DPAD_UP);
-
-		// TODO: these are a lil' buggy
 		if (*(int*)GAMEFLOWMANAGER_STATUS_ADDR == 3)
 		{
-			if ((wButtons & XINPUT_GAMEPAD_X) != bXButtonOldState)
-			{
-				if (wButtons & XINPUT_GAMEPAD_X) // trigger once only on button down state
-				{
-					if (FEHashUpper((char*)CURRENT_MENUPKG_ADDR) == 0x1F549740) // MU_GaragePerformanceCategory.fng
-						*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'P'; // performance stats
-					else if (FEHashUpper((char*)CURRENT_MENUPKG_ADDR) == 0xF53C6787) // MU_GarageVinylLayerV2.fng -- call the color picker when X is pressed!!!
-						FEngSendMessageToPackage(0xC519BFC0, "MU_GarageVinylLayerV2.fng");
-					else
-						*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'C'; // customize car
-				}
-				bXButtonOldState = wButtons & XINPUT_GAMEPAD_X;
-			}
-
 			if ((wButtons & XINPUT_GAMEPAD_Y))
 				*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'D'; // delete profile
-
-			if (((wButtons & XINPUT_GAMEPAD_Y) != bZButtonOldState) && (FEHashUpper((char*)CURRENT_MENUPKG_ADDR) != 0xFD6DFFB3)) // except in MU_UG_NewOrLoad_PC2.fng 
-			{
-				if ((wButtons & XINPUT_GAMEPAD_Y)) // trigger once only on button down state
-					*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'Z'; // reset to default, decal color, etc...
-				bZButtonOldState = (wButtons & XINPUT_GAMEPAD_Y);
-			}
-
-			//if ((wButtons & XINPUT_GAMEPAD_B))
-			//	*(char*)FE_WINDOWS_KEY_CODE_ADDR = 0x1B; // escape
 
 			if ((g_Controllers[0].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD))
 				*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'T'; // tutorial
@@ -661,84 +1177,54 @@ void ReadXInput()
 			bQuitButtonOldState = (wButtons & XINPUT_GAMEPAD_BACK);
 		}
 	}
-	// controller 2 - debug camera and other stuff
-	if (g_Controllers[1].bConnected)
-	{
-		WORD wButtons = g_Controllers[1].state.Gamepad.wButtons;
-		b2[NFSUJOY_DEBUGCAM_ACTIVATE] = b2[NFSUJOY_DEBUGCAM_ACTIVATE] ? !(wButtons & XINPUT_GAMEPAD_BACK) : b2[NFSUJOY_DEBUGCAM_ACTIVATE];
-		b2[NFSUJOY_DEBUGCAM_MOVEFORWARD] = b2[NFSUJOY_DEBUGCAM_MOVEFORWARD] ? !(wButtons & XINPUT_GAMEPAD_A) : b2[NFSUJOY_DEBUGCAM_MOVEFORWARD];
-		b2[NFSUJOY_DEBUGCAM_MOVEBACKWARD] = b2[NFSUJOY_DEBUGCAM_MOVEBACKWARD] ? !(wButtons & XINPUT_GAMEPAD_Y) : b2[NFSUJOY_DEBUGCAM_MOVEBACKWARD];
-		b2[NFSUJOY_DEBUGCAM_MOVELEFT] = b2[NFSUJOY_DEBUGCAM_MOVELEFT] ? !(wButtons & XINPUT_GAMEPAD_X) : b2[NFSUJOY_DEBUGCAM_MOVELEFT];
-		b2[NFSUJOY_DEBUGCAM_MOVERIGHT] = b2[NFSUJOY_DEBUGCAM_MOVERIGHT] ? !(wButtons & XINPUT_GAMEPAD_B) : b2[NFSUJOY_DEBUGCAM_MOVERIGHT];
-		b2[NFSUJOY_DEBUGCAM_MOVEUP] = b2[NFSUJOY_DEBUGCAM_MOVEUP] ? !(wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER) : b2[NFSUJOY_DEBUGCAM_MOVEUP];
-		b2[NFSUJOY_DEBUGCAM_MOVEDOWN] = b2[NFSUJOY_DEBUGCAM_MOVEDOWN] ? !(g_Controllers[1].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD) : b2[NFSUJOY_DEBUGCAM_MOVEDOWN];
-		b2[NFSUJOY_DEBUGCAM_LOOKUP] = b2[NFSUJOY_DEBUGCAM_LOOKUP] ? !(wButtons & XINPUT_GAMEPAD_DPAD_UP) : b2[NFSUJOY_DEBUGCAM_LOOKUP];
-		b2[NFSUJOY_DEBUGCAM_LOOKDOWN] = b2[NFSUJOY_DEBUGCAM_LOOKDOWN] ? !(wButtons & XINPUT_GAMEPAD_DPAD_DOWN) : b2[NFSUJOY_DEBUGCAM_LOOKDOWN];
-		b2[NFSUJOY_DEBUGCAM_LOOKLEFT] = b2[NFSUJOY_DEBUGCAM_LOOKLEFT] ? !(wButtons & XINPUT_GAMEPAD_DPAD_LEFT) : b2[NFSUJOY_DEBUGCAM_LOOKLEFT];
-		b2[NFSUJOY_DEBUGCAM_LOOKRIGHT] = b2[NFSUJOY_DEBUGCAM_LOOKRIGHT] ? !(wButtons & XINPUT_GAMEPAD_DPAD_RIGHT) : b2[NFSUJOY_DEBUGCAM_LOOKRIGHT];
-		b2[NFSUJOY_DEBUGCAM_TURBO] = b2[NFSUJOY_DEBUGCAM_TURBO] ? !(wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER) : b2[NFSUJOY_DEBUGCAM_TURBO];
-		b2[NFSUJOY_DEBUGCAM_SUPERTURBO] = b2[NFSUJOY_DEBUGCAM_SUPERTURBO] ? !(g_Controllers[1].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD) : b2[NFSUJOY_DEBUGCAM_SUPERTURBO];
-	}
-
-	// write bits back
-	*(int*)JOYBUTTONS1_ADDR = b1.to_ulong();
-	*(int*)JOYBUTTONS2_ADDR = b2.to_ulong();
 }
 
 void __stdcall ReadControllerData()
 {
+	MSG outMSG;
 	UpdateControllerState();
-	ReadXInput();
-}
-
-// entrypoint: 0x004065AD
-unsigned int JoyEventCaveExit = 0x004065B6;
-unsigned int SavedObj = 0;
-void __declspec(naked) JoyEventCave()
-{
-	_asm mov SavedObj, esi
-
-	ReadControllerData();
-
-	_asm
-	{
-		mov esi, SavedObj
-		mov eax, [esi+8]
-		mov edi, ds:JOYBUTTONS1_ADDR
-		jmp JoyEventCaveExit
-	}
+	ReadXInput_Extra();
+	if (KeyboardReadingMode == KB_READINGMODE_BUFFERED)
+		GetKeyboardState(VKeyStates[0]);
 }
 
 void InitConfig()
 {
 	CIniReader inireader("");
 
+	KeyboardReadingMode = inireader.ReadInteger("Input", "KeyboardReadingMode", 0);
+	bAllowTwoPlayerKB = inireader.ReadInteger("Input", "AllowTwoPlayerKB", 0);
 	ControllerIconMode = inireader.ReadInteger("Icons", "ControllerIconMode", 0);
 	LastControlledDevice = inireader.ReadInteger("Icons", "FirstControlDevice", 0);
+
+	SetupScannerConfig();
 }
 
 int Init()
 {
-	// kill DInput8 joypad reading & event generation -- TODO: try to kill dinput from ever being created if possible
-	injector::MakeCALL(0x0040A7B5, DummyFunc, true);
+	// kill DInput8 joypad reading & event generation
 	injector::MakeCALL(0x00401921, DummyFunc, true);
 	injector::MakeCALL(0x0040164C, DummyFunc, true);
 	injector::MakeJMP(0x004071B8, 0x004075D1, true);
-	// hook the reading for XInput
-	injector::MakeJMP(0x004065AD, JoyEventCave, true);
-	// hook for car orbiting with right stick (hooking mouse inputs) + bugfix (adding a slight delay to give time for the actual vars to be read and updated)
-	injector::MakeJMP(0x004B0CB9, FECarOrbitCave, true);
-	injector::WriteMemory<int>(0x004B0CE7, (int)&CarOrbitDivisor, true);
-	injector::WriteMemory<int>(0x004B0D17, (int)&CarOrbitDivisor, true);
 	// hook FEng globally in FEPkgMgr_SendMessageToPackage
 	injector::MakeJMP(0x004F7C08, FEngGlobalCave, true);
 	// snoop last activated FEng package
 	injector::MakeCALL(0x004F3BC3, SnoopLastFEPackage, true);
 
 	// this kills DInput enumeration COMPLETELY -- even the keyboard
-	//injector::MakeJMP(0x00405695, 0x004056AA, true);
-	// kill DInput8 enumeration for joypads only
-	injector::MakeJMP(0x00418E4B, 0x00418E68, true);
+	injector::MakeJMP(0x00405695, 0x004056AA, true);
+	// kill game input reading
+	injector::MakeJMP(0x00405992, 0x00405BD6, true);
+
+	// Replace ActualReadJoystickData with ReadControllerData
+	injector::MakeCALL(0x0040A7B5, ReadControllerData, true);
+
+	// reroute ScannerConfig table
+	injector::WriteMemory(0x00574A22, ScannerConfigs, true);
+	*(int*)0x00704140 = MAX_JOY_EVENT;
+
+	// KB input init
+	injector::MakeCALL(0x00447271, InitCustomKBInput, true);
 
 	// dereference the current WndProc from the game executable and write to the function pointer (to maximize compatibility)
 	GameWndProcAddr = *(unsigned int*)0x4088FC;
@@ -758,8 +1244,8 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/, DWORD reason, LPVOID /*lpReserved*/)
 {
 	if (reason == DLL_PROCESS_ATTACH)
 	{
-		freopen("CON", "w", stdout);
-		freopen("CON", "w", stderr);
+		//freopen("CON", "w", stdout);
+		//freopen("CON", "w", stderr);
 		Init();
 	}
 	return TRUE;

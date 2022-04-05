@@ -82,7 +82,11 @@
   </ItemDefinitionGroup>
   <ItemGroup>
     <ClInclude Include="NFSU_ConsoleButtonHashes.h" />
+    <ClInclude Include="NFSU_EventNames.h" />
     <ClInclude Include="NFSU_JoyBitInfo.h" />
+    <ClInclude Include="NFSU_XtendedInput_FEng.h" />
+    <ClInclude Include="NFSU_XtendedInput_VKHash.h" />
+    <ClInclude Include="NFSU_XtendedInput_XInputConfig.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
   </ItemGroup>
@@ -102,6 +106,7 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="BitInfo.txt" />
+    <Text Include="EventReference.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="NFSU_XtendedInput.ini" />
