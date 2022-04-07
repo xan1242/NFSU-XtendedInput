@@ -1225,6 +1225,9 @@ int Init()
 	// KB input init
 	injector::MakeCALL(0x00447271, InitCustomKBInput, true);
 
+	// hook for OptionsSelectorMenu::NotificationMessage to disable controller options (for now)
+	injector::WriteMemory<unsigned int>(0x006C3E54, (unsigned int)&OptionsSelectorMenu_NotificationMessage_Hook, true);
+
 	// dereference the current WndProc from the game executable and write to the function pointer (to maximize compatibility)
 	GameWndProcAddr = *(unsigned int*)0x4088FC;
 	GameWndProc = (LRESULT(WINAPI*)(HWND, UINT, WPARAM, LPARAM))GameWndProcAddr;

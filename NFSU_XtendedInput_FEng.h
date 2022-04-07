@@ -4,6 +4,8 @@
 #define FEMOUSECURSOR_CARORBIT_X_ADDR 0x007064A4
 #define FEMOUSECURSOR_CARORBIT_Y_ADDR 0x007064A8
 
+#define CFENG_PINSTANCE_ADDR 0x0073578C
+
 enum ResourceFileType
 {
 	RESOURCE_FILE_NONE = 0,
@@ -33,6 +35,9 @@ char CurrentSplashText[64];
 void* (*CreateResourceFile)(char* filename, int ResType, int unk1, int unk2, int unk3) = (void* (*)(char*, int, int, int, int))0x004482F0;
 void(*ServiceResourceLoading)() = (void(*)())0x004483C0;
 unsigned int(*GetTextureInfo)(unsigned int hash, int unk, int unk2) = (unsigned int(*)(unsigned int, int, int))0x005461C0;
+void(__thiscall* _FEngSetColor)(void* FEObject, unsigned int color) = (void(__thiscall*)(void*, unsigned int))0x004F75B0;
+void(__thiscall* OptionsSelectorMenu_NotificationMessage)(void* UndergroundBriefScreen, unsigned int msg, void* FEObject, unsigned int unk2, unsigned int unk3) = (void(__thiscall*)(void*, unsigned int, void*, unsigned int, unsigned int))0x004D4610;
+
 
 unsigned int ResourceFile_BeginLoading_Addr = 0x00448110;
 void __stdcall ResourceFile_BeginLoading(void* ResourceFile, void* unk1, int unk2)
@@ -173,6 +178,37 @@ int __stdcall FEngFindImage(const char* pkgname, int hash)
 	if (!result || *(int*)(result + 24) != 1)
 		result = 0;
 	return result;
+}
+
+unsigned int FEngSetButtonState_Addr = 0x004F5F80;
+void __stdcall FEngSetButtonState(const char* pkgname, unsigned int hash, unsigned int state)
+{
+	int cfeng_instance = *(int*)CFENG_PINSTANCE_ADDR;
+	_asm
+	{
+		push state
+		mov edi, hash
+		mov eax, pkgname
+		push cfeng_instance
+		call FEngSetButtonState_Addr
+		//add esp, 4
+	}
+}
+
+#pragma runtime_checks( "", off )
+void __stdcall FEngSetColor(void* FEObject, unsigned int color)
+{
+	_FEngSetColor(FEObject, color);
+	_asm add esp, 4
+}
+#pragma runtime_checks( "", restore )
+
+// we need to disable controller options menu because they crash the game 
+// (and currently are unusable anyways -- this will require extensive research to hook into the joypad config properly, for now we just stick to an ini config file)
+void DisableControllerOptions()
+{
+	FEngSetButtonState("MU_OptionsSelector_PC.fng", FEHashUpper("Controller"), 0);
+	FEngSetColor((void*)FEngFindObject("MU_OptionsSelector_PC.fng", FEHashUpper("Controller")), 0xFF404040);
 }
 
 void SnoopLastFEPackage(char* format, char* pkg)
@@ -403,4 +439,14 @@ void __declspec(naked) FEngGlobalCave()
 		jmp FEngGlobalCaveExit
 	}
 }
+#pragma runtime_checks( "", off )
+void __stdcall OptionsSelectorMenu_NotificationMessage_Hook(unsigned int unk1, void* FEObject, unsigned int unk2, unsigned int unk3)
+{
+	unsigned int thethis = 0;
+	_asm mov thethis, ecx
 
+	DisableControllerOptions();
+
+	return OptionsSelectorMenu_NotificationMessage((void*)thethis, unk1, FEObject, unk2, unk3);
+}
+#pragma runtime_checks( "", restore )
