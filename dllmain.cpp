@@ -1,23 +1,18 @@
-﻿// NFS Underground - Xtended Input plugin
+﻿// Need for Speed (Black Box) - Xtended Input plugin
 // Bringing native XInput to NFS
 // by Xan/Tenjoin
 
 // TODO: bring rumble/vibration function
 // TODO: remapping? -- partially done, but only 1 event per key and 1 key per event
 // TODO: kill DInput enough so that it doesn't detect XInput controllers but still detects wheels
-// TODO: properly restore console FrontEnd objects (help messages, controller icons) -- partially done, HELP menu still needs to be restored
-// TODO: reassigned button textures -- so when you set Y button for BUTTON1 in FE, it should draw Y and not keep drawing X
 // TODO: proper raw input for keyboard (and maybe non XInput gamepads?)
+// TODO (UG): properly restore console FrontEnd objects (help messages, controller icons) -- partially done, HELP menu still needs to be restored
+// TODO (UG): reassigned button textures -- so when you set Y button for BUTTON1 in FE, it should draw Y and not keep drawing X
 
 #include "stdafx.h"
 #include "stdio.h"
 #include <windows.h>
 #include <bitset>
-#include "NFSU_ConsoleButtonHashes.h"
-#include "NFSU_EventNames.h"
-#include "NFSU_XtendedInput_FEng.h"
-#include "NFSU_XtendedInput_XInputConfig.h"
-#include "NFSU_XtendedInput_VKHash.h"
 #include "includes\injector\injector.hpp"
 #include "includes\IniReader.h"
 
@@ -29,29 +24,21 @@
 #pragma comment(lib,"xinput9_1_0.lib")
 #endif
 
+#ifdef GAME_UG
+#include "NFSU_ConsoleButtonHashes.h"
+#include "NFSU_EventNames.h"
+#include "NFSU_XtendedInput_FEng.h"
+#include "NFSU_XtendedInput_XInputConfig.h"
+#include "NFSU_XtendedInput_VKHash.h"
+#include "NFSU_Addresses.h"
+#endif
+
 #define MAX_CONTROLLERS 4  // XInput handles up to 4 controllers 
 #define INPUT_DEADZONE  ( 0.24f * FLOAT(0x7FFF) )  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
 
 #define TRIGGER_ACTIVATION_THRESHOLD 0x20
 #define SHIFT_ANALOG_THRESHOLD 0x5000
 #define FEUPDOWN_ANALOG_THRESHOLD 0x3FFF
-
-#define JOYBUTTONS1_ADDR 0x00719780
-#define JOYBUTTONS2_ADDR 0x00719784
-#define THROTTLE_AXIS_ADDR 0x00719788
-#define BRAKE_AXIS_ADDR 0x00719789
-#define STEER_AXIS_ADDR 0x0071978A
-#define FE_WINDOWS_KEY_CODE_ADDR 0x007363B1
-#define GAMEFLOWMANAGER_STATUS_ADDR 0x0077A920
-#define CURRENT_MENUPKG_ADDR 0x72CDD0
-#define FEMOUSECURSOR_BUTTONPRESS_ADDR 0x007064B0
-#define FEMOUSECURSOR_CARORBIT_X_ADDR 0x007064A4
-#define FEMOUSECURSOR_CARORBIT_Y_ADDR 0x007064A8
-#define NUMSCANNERCONFIGS_ADDR 0x00704140
-#define JOYSTICKTYPE_P1_ADDR 0x007306C4
-#define JOYSTICKTYPE_P2_ADDR 0x007306C5
-#define JOYSTICK_P1_CONNECTION_STATUS_ADDR 0x736504
-#define GAME_HWND_ADDR 0x00736380
 
 // for triggering the over-zelaous inputs once in a tick...
 WORD bQuitButtonOldState = 0;
@@ -218,7 +205,7 @@ LRESULT WINAPI CustomWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 	return GameWndProc(hWnd, msg, wParam, lParam);
 }
 
-void(*InitJoystick)() = (void(*)())0x005741C0;
+void(*InitJoystick)() = (void(*)())INITJOY_ADDR;
 void DummyFunc()
 {
 	return;
@@ -247,7 +234,7 @@ int bStringHash(char* a1)
 int Scanner_DigitalUpOrDown_XInput(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
+	if ((int)Joystick == JOY2_ADDR)
 		ci = 1;
 
 	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
@@ -278,7 +265,7 @@ int Scanner_DigitalUpOrDown_XInput(void* EventNode, unsigned int* unk1, unsigned
 int Scanner_DigitalUpOrDown_RawKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
+	if ((int)Joystick == JOY2_ADDR)
 		ci = 1;
 
 	// throttle is very time sensitive, so we return all the time
@@ -423,7 +410,7 @@ int Scanner_DigitalUpOrDown(void* EventNode, unsigned int* unk1, unsigned int un
 int Scanner_DigitalSteer(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
+	if ((int)Joystick == JOY2_ADDR)
 		ci = 1;
 
 	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
@@ -534,7 +521,7 @@ int Scanner_DigitalSteer_KB(void* EventNode, unsigned int* unk1, unsigned int un
 int Scanner_DigitalDown_XInput(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
+	if ((int)Joystick == JOY2_ADDR)
 		ci = 1;
 
 	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
@@ -558,7 +545,7 @@ int Scanner_DigitalDown_XInput(void* EventNode, unsigned int* unk1, unsigned int
 int Scanner_DigitalDown_RawKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
+	if ((int)Joystick == JOY2_ADDR)
 		ci = 1;
 
 	// we're using BitmaskStuff to define which button is actually pressed
@@ -637,7 +624,7 @@ int Scanner_DigitalDown(void* EventNode, unsigned int* unk1, unsigned int unk2, 
 int Scanner_DigitalAnalog_XInput(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
+	if ((int)Joystick == JOY2_ADDR)
 		ci = 1;
 
 	WORD threshold = FEUPDOWN_ANALOG_THRESHOLD;
@@ -840,7 +827,7 @@ int Scanner_DigitalAnalog(void* EventNode, unsigned int* unk1, unsigned int unk2
 int Scanner_DigitalAnyButton(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
+	if ((int)Joystick == JOY2_ADDR)
 		ci = 1;
 
 	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
@@ -870,7 +857,7 @@ int Scanner_DigitalAnyButton(void* EventNode, unsigned int* unk1, unsigned int u
 int Scanner_Analog(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
+	if ((int)Joystick == JOY2_ADDR)
 		ci = 1;
 
 	BYTE axis = 0;
@@ -917,7 +904,7 @@ int Scanner_Analog(void* EventNode, unsigned int* unk1, unsigned int unk2, Scann
 int Scanner_Analog_DragSteer(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
+	if ((int)Joystick == JOY2_ADDR)
 		ci = 1;
 
 	BYTE axis = 0;
@@ -1202,36 +1189,36 @@ void InitConfig()
 int Init()
 {
 	// kill DInput8 joypad reading & event generation
-	injector::MakeCALL(0x00401921, DummyFunc, true);
-	injector::MakeCALL(0x0040164C, DummyFunc, true);
-	injector::MakeJMP(0x004071B8, 0x004075D1, true);
+	injector::MakeJMP(EVENTGEN_JMP_ADDR_ENTRY, EVENTGEN_JMP_ADDR_EXIT, true);
 	// hook FEng globally in FEPkgMgr_SendMessageToPackage
-	injector::MakeJMP(0x004F7C08, FEngGlobalCave, true);
+	injector::MakeJMP(FENG_SENDMSG_HOOK_ADDR, FEngGlobalCave, true);
 	// snoop last activated FEng package
 	injector::MakeCALL(0x004F3BC3, SnoopLastFEPackage, true);
 
 	// this kills DInput enumeration COMPLETELY -- even the keyboard
-	injector::MakeJMP(0x00405695, 0x004056AA, true);
+	injector::MakeJMP(DINPUTENUM_JMP_ADDR_ENTRY, DINPUTENUM_JMP_ADDR_EXIT, true);
 	// kill game input reading
-	injector::MakeJMP(0x00405992, 0x00405BD6, true);
+	injector::MakeJMP(JOYBUFFER_JMP_ADDR_ENTRY, JOYBUFFER_JMP_ADDR_EXIT, true);
 
 	// Replace ActualReadJoystickData with ReadControllerData
-	injector::MakeCALL(0x0040A7B5, ReadControllerData, true);
+	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR1, ReadControllerData, true);
+	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR2, ReadControllerData, true);
+	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR3, ReadControllerData, true);
 
 	// reroute ScannerConfig table
-	injector::WriteMemory(0x00574A22, ScannerConfigs, true);
+	injector::WriteMemory(SCANNERCONFIG_POINTER_ADDR, ScannerConfigs, true);
 	*(int*)0x00704140 = MAX_JOY_EVENT;
 
 	// KB input init
-	injector::MakeCALL(0x00447271, InitCustomKBInput, true);
+	injector::MakeCALL(INITJOY_CALL_ADDR, InitCustomKBInput, true);
 
 	// hook for OptionsSelectorMenu::NotificationMessage to disable controller options (for now)
-	injector::WriteMemory<unsigned int>(0x006C3E54, (unsigned int)&OptionsSelectorMenu_NotificationMessage_Hook, true);
+	injector::WriteMemory<unsigned int>(OPTIONSSELECTOR_VTABLE_FUNC_ADDR, (unsigned int)&OptionsSelectorMenu_NotificationMessage_Hook, true);
 
 	// dereference the current WndProc from the game executable and write to the function pointer (to maximize compatibility)
-	GameWndProcAddr = *(unsigned int*)0x4088FC;
+	GameWndProcAddr = *(unsigned int*)WNDPROC_POINTER_ADDR;
 	GameWndProc = (LRESULT(WINAPI*)(HWND, UINT, WPARAM, LPARAM))GameWndProcAddr;
-	injector::WriteMemory<unsigned int>(0x4088FC, (unsigned int)&CustomWndProc, true);
+	injector::WriteMemory<unsigned int>(WNDPROC_POINTER_ADDR, (unsigned int)&CustomWndProc, true);
 
 	// Init state
 	ZeroMemory(g_Controllers, sizeof(CONTROLLER_STATE) * MAX_CONTROLLERS);
