@@ -1,6 +1,6 @@
-# NFS Underground - Xtended Input
+# Need for Speed (Black Box) - Xtended Input
 
-This is a plugin for NFS Underground which brings XInput support to the game!
+This is a plugin for NFS Underground & Underground 2 which brings XInput support to the games!
 
 Currently a work in progress, but fully usable and playable!
 
@@ -19,6 +19,8 @@ Planned to bring to other NFS games in the future!
 - Access to some leftover features from Hot Pursuit 2
 
 - Re-done keyboard input code - not using DInput8 anymore. Now talks directly over Win32 (GetAsyncKeyState, GetKeyboardState or raw input)
+
+- (UG2 only) Re-done mouse input - also using Win32 for mouse input (with auto hiding after 5 seconds)
 
 ## Button mappings
 
@@ -48,6 +50,10 @@ Default controller button mappings are:
 
 - Quit game: Windows/Back button
 
+- Car honk (missing playback code): Left Stick (L3)
+
+Underground only:
+
 - Cycle HUD: D-Pad Up
 
 - Zone Slowmo (HP2): D-Pad Down
@@ -56,7 +62,17 @@ Default controller button mappings are:
 
 - Zone Preview (HP2): Right shoulder (R1)
 
-- Car honk (missing playback code): Left Stick (L3)
+Underground 2 only:
+
+- SMS/Map/Status/Engage Event: D-Pad
+
+- Car Hydraulics activate: Left Stick click (L3)
+
+- Car Hydraulics control: Right Stick X/Y
+
+- Car Bounce activate: Right Stick click (R3)
+
+- Car Bounce control: Left Stick X/Y
 
 ### FrontEnd
 
@@ -112,6 +128,8 @@ You must use a controller on the second port to invoke it and use it
 
 - Look (analog): Right stick X/Y
 
+- Drop car: Start
+
 ## Keyboard controls
 
 They're slightly changed from default.
@@ -148,11 +166,23 @@ Third mode is raw input reading. This is read during WM_INPUT. It currently exhi
 
 - Quit game: Q
 
+- Car honk (missing playback code): H
+
+Underground only:
+
 - Zone Freeze (HP2): Page Down
 
 - Zone Preview (HP2): Delete
 
-- Car honk (missing playback code): H
+Underground 2:
+
+- SMS: Tab
+
+- Map: M
+
+- Career progress: 1
+
+- Engage event: Enter
 
 ### FrontEnd
 
@@ -180,7 +210,9 @@ Third mode is raw input reading. This is read during WM_INPUT. It currently exhi
 
 ### Debug camera
 
-- Activation: M
+- Activation (UG1): M
+
+- Activation (UG2): Backspace
 
 - Move forward: W
 
@@ -205,6 +237,8 @@ Third mode is raw input reading. This is read during WM_INPUT. It currently exhi
 - Turbo: Right Shift
 
 - Super Turbo: F
+
+- Drop car: 5
 
 ## TODO list:
 
