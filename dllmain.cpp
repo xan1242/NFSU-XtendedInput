@@ -913,7 +913,7 @@ int Scanner_Analog(void* EventNode, unsigned int* unk1, unsigned int unk2, Scann
 	if (inScannerConfig->JoyEvent == JOY_EVENT_CARSEL_ORBIT_UPDOWN)
 		axis = -axis;
 
-	printf("%s 0x%hX\n", JoyEventNames[inScannerConfig->JoyEvent], inScannerConfig->JoyEvent + (axis << 8));
+	//printf("%s 0x%hX\n", JoyEventNames[inScannerConfig->JoyEvent], inScannerConfig->JoyEvent + (axis << 8));
 
 	if ((axis != EventStates[ci][inScannerConfig->JoyEvent]) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
 	{
@@ -1238,7 +1238,7 @@ int Init()
 	injector::MakeCALL(0x004F3BC3, SnoopLastFEPackage, true);
 #endif
 #ifndef GAME_UG
-	// force controller config to be 0xFF because it's kinda buggy
+	// custom config finder (because it returns 0 with the original function)
 	injector::MakeJMP(FINDSCANNERCONFIG_ADDR, FindScannerConfig_Custom, true);
 #endif
 	// this kills DInput enumeration COMPLETELY -- even the keyboard
