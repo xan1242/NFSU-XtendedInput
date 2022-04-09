@@ -1171,7 +1171,11 @@ bool bIsEventDigitalDownOnly(unsigned int joyevent)
 		|| (joyevent == JOY_EVENT_PAUSE)
 		|| (joyevent == JOY_EVENT_SKIP)
 		|| (joyevent == JOY_EVENT_CHANGE_DEBUG_CAMERA)
-		|| (joyevent == JOY_EVENT_CYCLE_HUD);
+		|| (joyevent == JOY_EVENT_CYCLE_HUD)
+		|| (joyevent == JOY_EVENT_REQUEST_ENGAGE_INFO)
+		|| (joyevent == JOY_EVENT_REQUEST_WORLD_MAP)
+		|| (joyevent == JOY_EVENT_REQUEST_LEGEND)
+		|| (joyevent == JOY_EVENT_REQUEST_MESSAGE_SYSTEM);
 }
 
 bool bIsEventAnalog(unsigned int joyevent)
