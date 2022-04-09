@@ -1268,6 +1268,10 @@ void InitConfig()
 	ControllerIconMode = inireader.ReadInteger("Icons", "ControllerIconMode", 0);
 	LastControlledDevice = inireader.ReadInteger("Icons", "FirstControlDevice", 0);
 #endif
+#ifndef GAME_UG
+	bConfineMouse = inireader.ReadInteger("Input", "ConfineMouse", 0);
+#endif
+
 	SetupScannerConfig();
 }
 
