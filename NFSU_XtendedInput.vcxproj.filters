@@ -1,0 +1,39 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="dllmain.cpp" />
+    <ClCompile Include="stdafx.cpp" />
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="NFSU2_Addresses.h" />
+    <ClInclude Include="NFSU_Addresses.h" />
+    <ClInclude Include="NFSU_ConsoleButtonHashes.h" />
+    <ClInclude Include="NFSU_EventNames.h" />
+    <ClInclude Include="NFSU_XtendedInput_FEng.h" />
+    <ClInclude Include="NFSU_XtendedInput_VKHash.h" />
+    <ClInclude Include="NFSU_XtendedInput_XInputConfig.h" />
+    <ClInclude Include="stdafx.h" />
+    <ClInclude Include="targetver.h" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="README.md" />
+    <None Include="Config-UG\NFSU_XtendedInput.ini">
+      <Filter>Config-UG</Filter>
+    </None>
+    <None Include="Config-UG2\NFSU_XtendedInput.ini">
+      <Filter>Config-UG2</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Text Include="BitInfo.txt" />
+    <Text Include="EventReference.txt" />
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Config-UG">
+      <UniqueIdentifier>{6aefdc64-ca57-405d-8dad-00a02ac0f924}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Config-UG2">
+      <UniqueIdentifier>{2d2f855e-575e-4a82-a260-736e32c84f8b}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+</Project>

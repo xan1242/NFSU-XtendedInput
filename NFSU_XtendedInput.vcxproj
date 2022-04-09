@@ -185,7 +185,8 @@
     <Text Include="EventReference.txt" />
   </ItemGroup>
   <ItemGroup>
-    <None Include="NFSU_XtendedInput.ini" />
+    <None Include="Config-UG2\NFSU_XtendedInput.ini" />
+    <None Include="Config-UG\NFSU_XtendedInput.ini" />
     <None Include="README.md" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
