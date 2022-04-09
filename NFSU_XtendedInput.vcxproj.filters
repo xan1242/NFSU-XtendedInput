@@ -14,6 +14,7 @@
     <ClInclude Include="NFSU_XtendedInput_XInputConfig.h" />
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
+    <ClInclude Include="NFSU2_FEng.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />

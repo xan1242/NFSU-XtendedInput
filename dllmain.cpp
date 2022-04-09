@@ -6,10 +6,9 @@
 // TODO: remapping? -- partially done, but only 1 event per key and 1 key per event
 // TODO: kill DInput enough so that it doesn't detect XInput controllers but still detects wheels
 // TODO: proper raw input for keyboard (and maybe non XInput gamepads?)
-// TODO (UG): properly restore console FrontEnd objects (help messages, controller icons) -- partially done, HELP menu still needs to be restored
+// TODO (UG 1/2): properly restore console FrontEnd objects (help messages, controller icons) -- partially done, HELP menu still needs to be restored
 // TODO (UG): reassigned button textures -- so when you set Y button for BUTTON1 in FE, it should draw Y and not keep drawing X
 // TODO (UG2): maybe button hash assignments and FE stuff
-// TODO (UG2): reimplement mouse -- probably port over Nuzlocke Win32 mouse...
 
 #include "stdafx.h"
 #include "stdio.h"
@@ -36,6 +35,7 @@
 #ifdef GAME_UG2
 #include "NFSU2_EventNames.h"
 #include "NFSU2_Addresses.h"
+#include "NFSU2_FEng.h"
 #endif
 
 #include "NFSU_XtendedInput_XInputConfig.h"
@@ -100,115 +100,153 @@ unsigned int GameWndProcAddr = 0;
 LRESULT(WINAPI* GameWndProc)(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam);
 LRESULT WINAPI CustomWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
-	if ((msg == WM_INPUT) && (KeyboardReadingMode == KB_READINGMODE_UNBUFFERED_RAW))
+	switch (msg)
 	{
-		UINT dwSize;
-		
-		GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
-		LPBYTE lpb = new BYTE[dwSize];
-		if (lpb == NULL)
+	case WM_INPUT:
+		if (KeyboardReadingMode == KB_READINGMODE_UNBUFFERED_RAW)
 		{
-			KeyboardState = false;
-			return 0;
-		}
-		
-		if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, lpb, &dwSize, sizeof(RAWINPUTHEADER)) != dwSize)
-		{
-			KeyboardState = false;
-			OutputDebugString(TEXT("GetRawInputData does not return correct size !\n"));
-		}
-		
-		RAWINPUT* raw = (RAWINPUT*)lpb;
-		
-		if (raw->header.dwType == RIM_TYPEKEYBOARD)
-		{
-			KeyboardState = true;
-			LastControlledDevice = LASTCONTROLLED_KB;
+			UINT dwSize;
 
-			// going with first-come first-serve -- first KB is always the first used one
-			// this can catch a second virtual keyboard of a multi-device keyboard (the ones that use it for NKRO over USB), hence why it's optional
-			if ((FirstKB != NULL) && (FirstKB != raw->header.hDevice) && (SecondKB == NULL) && bAllowTwoPlayerKB)
+			GetRawInputData((HRAWINPUT)lParam, RID_INPUT, NULL, &dwSize, sizeof(RAWINPUTHEADER));
+			LPBYTE lpb = new BYTE[dwSize];
+			if (lpb == NULL)
 			{
-				SecondKB = raw->header.hDevice;
-				*(unsigned char*)JOYSTICKTYPE_P2_ADDR = 0;
-			}
-
-			if (FirstKB == NULL)
-				FirstKB = raw->header.hDevice;
-
-			//printf(" Kbd %p: make=%04x Flags:%04x Reserved:%04x ExtraInformation:%08x, msg=%04x VK=%04x \n",
-			//	raw->header.hDevice,
-			//raw->data.keyboard.MakeCode,
-			//	raw->data.keyboard.Flags,
-			//	raw->data.keyboard.Reserved,
-			//	raw->data.keyboard.ExtraInformation,
-			//	raw->data.keyboard.Message,
-			//	raw->data.keyboard.VKey);
-
-			if (raw->header.hDevice == SecondKB)
-			{
-				switch (raw->data.keyboard.VKey)
-				{
-				case VK_CONTROL:
-					if (raw->data.keyboard.Flags & RI_KEY_E0)
-						VKeyStates[1][VK_RCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					else
-						VKeyStates[1][VK_LCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					break;
-				case VK_MENU:
-					if (raw->data.keyboard.Flags & RI_KEY_E0)
-						VKeyStates[1][VK_RMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					else
-						VKeyStates[1][VK_LMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					break;
-				case VK_SHIFT:
-					if (raw->data.keyboard.MakeCode == 0x36)
-						VKeyStates[1][VK_RSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					else
-						VKeyStates[1][VK_LSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					break;
-				default:
-					VKeyStates[1][raw->data.keyboard.VKey] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					break;
-				}
+				KeyboardState = false;
 				return 0;
 			}
-			else if (raw->header.hDevice)
+
+			if (GetRawInputData((HRAWINPUT)lParam, RID_INPUT, lpb, &dwSize, sizeof(RAWINPUTHEADER)) != dwSize)
 			{
-				switch (raw->data.keyboard.VKey)
-				{
-				case VK_CONTROL:
-					if (raw->data.keyboard.Flags & RI_KEY_E0)
-						VKeyStates[0][VK_RCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					else
-						VKeyStates[0][VK_LCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					break;
-				case VK_MENU:
-					if (raw->data.keyboard.Flags & RI_KEY_E0)
-						VKeyStates[0][VK_RMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					else
-						VKeyStates[0][VK_LMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					break;
-				case VK_SHIFT:
-					if (raw->data.keyboard.MakeCode == 0x36)
-						VKeyStates[0][VK_RSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					else
-						VKeyStates[0][VK_LSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					break;
-				default:
-					VKeyStates[0][raw->data.keyboard.VKey] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
-					break;
-				}
+				KeyboardState = false;
+				OutputDebugString(TEXT("GetRawInputData does not return correct size !\n"));
 			}
 
+			RAWINPUT* raw = (RAWINPUT*)lpb;
+
+			if (raw->header.dwType == RIM_TYPEKEYBOARD)
+			{
+				KeyboardState = true;
+				LastControlledDevice = LASTCONTROLLED_KB;
+
+				// going with first-come first-serve -- first KB is always the first used one
+				// this can catch a second virtual keyboard of a multi-device keyboard (the ones that use it for NKRO over USB), hence why it's optional
+				if ((FirstKB != NULL) && (FirstKB != raw->header.hDevice) && (SecondKB == NULL) && bAllowTwoPlayerKB)
+				{
+					SecondKB = raw->header.hDevice;
+					*(unsigned char*)JOYSTICKTYPE_P2_ADDR = 0;
+				}
+
+				if (FirstKB == NULL)
+					FirstKB = raw->header.hDevice;
+
+				//printf(" Kbd %p: make=%04x Flags:%04x Reserved:%04x ExtraInformation:%08x, msg=%04x VK=%04x \n",
+				//	raw->header.hDevice,
+				//raw->data.keyboard.MakeCode,
+				//	raw->data.keyboard.Flags,
+				//	raw->data.keyboard.Reserved,
+				//	raw->data.keyboard.ExtraInformation,
+				//	raw->data.keyboard.Message,
+				//	raw->data.keyboard.VKey);
+
+				if (raw->header.hDevice == SecondKB)
+				{
+					switch (raw->data.keyboard.VKey)
+					{
+					case VK_CONTROL:
+						if (raw->data.keyboard.Flags & RI_KEY_E0)
+							VKeyStates[1][VK_RCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						else
+							VKeyStates[1][VK_LCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						break;
+					case VK_MENU:
+						if (raw->data.keyboard.Flags & RI_KEY_E0)
+							VKeyStates[1][VK_RMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						else
+							VKeyStates[1][VK_LMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						break;
+					case VK_SHIFT:
+						if (raw->data.keyboard.MakeCode == 0x36)
+							VKeyStates[1][VK_RSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						else
+							VKeyStates[1][VK_LSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						break;
+					default:
+						VKeyStates[1][raw->data.keyboard.VKey] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						break;
+					}
+					return 0;
+				}
+				else if (raw->header.hDevice)
+				{
+					switch (raw->data.keyboard.VKey)
+					{
+					case VK_CONTROL:
+						if (raw->data.keyboard.Flags & RI_KEY_E0)
+							VKeyStates[0][VK_RCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						else
+							VKeyStates[0][VK_LCONTROL] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						break;
+					case VK_MENU:
+						if (raw->data.keyboard.Flags & RI_KEY_E0)
+							VKeyStates[0][VK_RMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						else
+							VKeyStates[0][VK_LMENU] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						break;
+					case VK_SHIFT:
+						if (raw->data.keyboard.MakeCode == 0x36)
+							VKeyStates[0][VK_RSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						else
+							VKeyStates[0][VK_LSHIFT] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						break;
+					default:
+						VKeyStates[0][raw->data.keyboard.VKey] = !(raw->data.keyboard.Flags & RI_KEY_BREAK);
+						break;
+					}
+				}
+
+				return 0;
+			}
+
+			delete[] lpb;
 			return 0;
 		}
-		
-		delete[] lpb;
+		break;
+	case WM_KEYDOWN:
+		if (KeyboardReadingMode != KB_READINGMODE_UNBUFFERED_RAW)
+			LastControlledDevice = LASTCONTROLLED_KB;
+		break;
+		// special cases for Win32 mouse on non-UG1
+#ifndef GAME_UG
+	case WM_LBUTTONDOWN:
+		bMousePressedDown = true;
 		return 0;
+	case WM_LBUTTONUP:
+		bMousePressedDown = false;
+		return 0;
+	case WM_RBUTTONDOWN:
+		bMouse3PressedDown = true;
+		return 0;
+	case WM_RBUTTONUP:
+		bMouse3PressedDown = false;
+		return 0;
+	case WM_MBUTTONDOWN:
+		bMouse2PressedDown = true;
+		return 0;
+	case WM_MBUTTONUP:
+		bMouse2PressedDown = false;
+		return 0;
+	case WM_SETFOCUS:
+		// confine mouse within the game window
+		if (bConfineMouse)
+		{
+			GetWindowRect(*(HWND*)GAME_HWND_ADDR, &windowRect);
+			ClipCursor(&windowRect);
+		}
+		break;
+#endif
+	default: 
+		break;
 	}
-	if ((msg == WM_KEYDOWN) && (KeyboardReadingMode != KB_READINGMODE_UNBUFFERED_RAW))
-		LastControlledDevice = LASTCONTROLLED_KB;
 
 	return GameWndProc(hWnd, msg, wParam, lParam);
 }
@@ -1235,19 +1273,36 @@ void InitConfig()
 
 int Init()
 {
-	// kill DInput8 joypad reading & event generation
-	injector::MakeJMP(EVENTGEN_JMP_ADDR_ENTRY, EVENTGEN_JMP_ADDR_EXIT, true);
 #ifdef GAME_UG
 	// hook FEng globally in FEPkgMgr_SendMessageToPackage
 	injector::MakeJMP(FENG_SENDMSG_HOOK_ADDR, FEngGlobalCave, true);
 
 	// snoop last activated FEng package
 	injector::MakeCALL(0x004F3BC3, SnoopLastFEPackage, true);
+
+	// reroute ScannerConfig table
+	injector::WriteMemory(SCANNERCONFIG_POINTER_ADDR, ScannerConfigs, true);
+	*(int*)0x00704140 = MAX_JOY_EVENT;
+
+	// hook for OptionsSelectorMenu::NotificationMessage to disable controller options (for now)
+	injector::WriteMemory<unsigned int>(OPTIONSSELECTOR_VTABLE_FUNC_ADDR, (unsigned int)&OptionsSelectorMenu_NotificationMessage_Hook, true);
+
+	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR2, ReadControllerData, true);
+	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR3, ReadControllerData, true);
 #endif
 #ifndef GAME_UG
 	// custom config finder (because it returns 0 with the original function)
 	injector::MakeJMP(FINDSCANNERCONFIG_ADDR, FindScannerConfig_Custom, true);
+	// Win32 mouse injection
+	injector::MakeCALL(0x00581470, UpdateFECursorPos, true);
+	// disable cursor hiding
+	injector::MakeJMP(0x005D268C, 0x5D269C, true);
+	// disable PC_CURSOR texture to avoid duplicate cursors
+	injector::WriteMemory<unsigned int>(0x0050B4EA, 0, true);
 #endif
+
+	// kill DInput8 joypad reading & event generation
+	injector::MakeJMP(EVENTGEN_JMP_ADDR_ENTRY, EVENTGEN_JMP_ADDR_EXIT, true);
 	// this kills DInput enumeration COMPLETELY -- even the keyboard
 	injector::MakeJMP(DINPUTENUM_JMP_ADDR_ENTRY, DINPUTENUM_JMP_ADDR_EXIT, true);
 	// kill game input reading
@@ -1255,20 +1310,10 @@ int Init()
 
 	// Replace ActualReadJoystickData with ReadControllerData
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR1, ReadControllerData, true);
-#ifdef GAME_UG
-	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR2, ReadControllerData, true);
-	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR3, ReadControllerData, true);
-#endif
+
 	// KB input init
 	injector::MakeCALL(INITJOY_CALL_ADDR, InitCustomKBInput, true);
-#ifdef GAME_UG
-	// reroute ScannerConfig table
-	injector::WriteMemory(SCANNERCONFIG_POINTER_ADDR, ScannerConfigs, true);
-	*(int*)0x00704140 = MAX_JOY_EVENT;
 
-	// hook for OptionsSelectorMenu::NotificationMessage to disable controller options (for now)
-	injector::WriteMemory<unsigned int>(OPTIONSSELECTOR_VTABLE_FUNC_ADDR, (unsigned int)&OptionsSelectorMenu_NotificationMessage_Hook, true);
-#endif
 	// dereference the current WndProc from the game executable and write to the function pointer (to maximize compatibility)
 	GameWndProcAddr = *(unsigned int*)WNDPROC_POINTER_ADDR;
 	GameWndProc = (LRESULT(WINAPI*)(HWND, UINT, WPARAM, LPARAM))GameWndProcAddr;

@@ -149,6 +149,7 @@
   <ItemGroup>
     <ClInclude Include="NFSU2_Addresses.h" />
     <ClInclude Include="NFSU2_EventNames.h" />
+    <ClInclude Include="NFSU2_FEng.h" />
     <ClInclude Include="NFSU_Addresses.h" />
     <ClInclude Include="NFSU_ConsoleButtonHashes.h" />
     <ClInclude Include="NFSU_EventNames.h" />
