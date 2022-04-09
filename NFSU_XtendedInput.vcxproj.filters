@@ -26,7 +26,12 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="BitInfo.txt" />
-    <Text Include="EventReference.txt" />
+    <Text Include="Config-UG2\EventReference.txt">
+      <Filter>Config-UG2</Filter>
+    </Text>
+    <Text Include="Config-UG\EventReference.txt">
+      <Filter>Config-UG</Filter>
+    </Text>
   </ItemGroup>
   <ItemGroup>
     <Filter Include="Config-UG">

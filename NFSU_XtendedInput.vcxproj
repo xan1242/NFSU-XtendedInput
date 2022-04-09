@@ -182,7 +182,8 @@
   </ItemGroup>
   <ItemGroup>
     <Text Include="BitInfo.txt" />
-    <Text Include="EventReference.txt" />
+    <Text Include="Config-UG2\EventReference.txt" />
+    <Text Include="Config-UG\EventReference.txt" />
   </ItemGroup>
   <ItemGroup>
     <None Include="Config-UG2\NFSU_XtendedInput.ini" />

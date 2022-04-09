@@ -912,6 +912,12 @@ int Scanner_Analog(void* EventNode, unsigned int* unk1, unsigned int unk2, Scann
 		axis = -axis;
 	if (inScannerConfig->JoyEvent == JOY_EVENT_CARSEL_ORBIT_UPDOWN)
 		axis = -axis;
+#ifdef GAME_UG2
+	if (inScannerConfig->JoyEvent == JOY_EVENT_HYDRAULIC_PRESSURIZE_ANALOG_UD)
+		axis = -axis;
+	if (inScannerConfig->JoyEvent == JOY_EVENT_HYDRAULIC_BOUNCE_ANALOG_UD)
+		axis = -axis;
+#endif
 
 	//printf("%s 0x%hX\n", JoyEventNames[inScannerConfig->JoyEvent], inScannerConfig->JoyEvent + (axis << 8));
 
@@ -1252,13 +1258,13 @@ int Init()
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR2, ReadControllerData, true);
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR3, ReadControllerData, true);
 #endif
+	// KB input init
+	injector::MakeCALL(INITJOY_CALL_ADDR, InitCustomKBInput, true);
+#ifdef GAME_UG
 	// reroute ScannerConfig table
 	injector::WriteMemory(SCANNERCONFIG_POINTER_ADDR, ScannerConfigs, true);
 	*(int*)0x00704140 = MAX_JOY_EVENT;
 
-	// KB input init
-	injector::MakeCALL(INITJOY_CALL_ADDR, InitCustomKBInput, true);
-#ifdef GAME_UG
 	// hook for OptionsSelectorMenu::NotificationMessage to disable controller options (for now)
 	injector::WriteMemory<unsigned int>(OPTIONSSELECTOR_VTABLE_FUNC_ADDR, (unsigned int)&OptionsSelectorMenu_NotificationMessage_Hook, true);
 #endif

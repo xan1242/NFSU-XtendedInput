@@ -1,7 +1,7 @@
 Below is a reference of available buttons for assignment (following standard XInput/Virtual-Key definitions, but slightly extended)
 You absolutely *must* assign them with strings and not in any other way (e.g. decimal/hex numbers).
 
-For each event you may assign only 1 button (and vice versa: for each button you may only assign 1 event).
+For each event you may assign only 1 button.
 
 Inline comments are NOT allowed in the configuration file for string reads! So this includes all button assignments!
 
