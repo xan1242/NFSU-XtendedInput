@@ -8,7 +8,8 @@
 // TODO: proper raw input for keyboard (and maybe non XInput gamepads?)
 // TODO (UG): properly restore console FrontEnd objects (help messages, controller icons) -- partially done, HELP menu still needs to be restored
 // TODO (UG): reassigned button textures -- so when you set Y button for BUTTON1 in FE, it should draw Y and not keep drawing X
-// TODO (UG2): button assignments, maybe button hash assignments and FE stuff
+// TODO (UG2): maybe button hash assignments and FE stuff
+// TODO (UG2): reimplement mouse -- probably port over Nuzlocke Win32 mouse...
 
 #include "stdafx.h"
 #include "stdio.h"
