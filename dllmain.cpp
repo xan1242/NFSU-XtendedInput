@@ -8,6 +8,7 @@
 // TODO: proper raw input for keyboard (and maybe non XInput gamepads?)
 // TODO (UG): properly restore console FrontEnd objects (help messages, controller icons) -- partially done, HELP menu still needs to be restored
 // TODO (UG): reassigned button textures -- so when you set Y button for BUTTON1 in FE, it should draw Y and not keep drawing X
+// TODO (UG2): button assignments, maybe button hash assignments and FE stuff
 
 #include "stdafx.h"
 #include "stdio.h"
@@ -28,10 +29,16 @@
 #include "NFSU_ConsoleButtonHashes.h"
 #include "NFSU_EventNames.h"
 #include "NFSU_XtendedInput_FEng.h"
-#include "NFSU_XtendedInput_XInputConfig.h"
-#include "NFSU_XtendedInput_VKHash.h"
 #include "NFSU_Addresses.h"
 #endif
+
+#ifdef GAME_UG2
+#include "NFSU2_EventNames.h"
+#include "NFSU2_Addresses.h"
+#endif
+
+#include "NFSU_XtendedInput_XInputConfig.h"
+#include "NFSU_XtendedInput_VKHash.h"
 
 #define MAX_CONTROLLERS 4  // XInput handles up to 4 controllers 
 #define INPUT_DEADZONE  ( 0.24f * FLOAT(0x7FFF) )  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
@@ -79,9 +86,9 @@ struct ScannerConfig
 	unsigned int ScannerFunctionPointer;
 	short int BitmaskStuff; // used to define which bits are read from the joypad buffer
 	short int BitmaskStuff2; // used to define which bits are read from the joypad buffer
-	unsigned int param; // if prev value was 0x10000 = button texture hash, if 0x10001 = max value, hard to determine
+	unsigned int unk5; // if prev value was 0x10000 = button texture hash, if 0x10001 = max value, hard to determine
+	unsigned int param;
 	unsigned int keycode; // normally unknown, we're reutilizing this value
-	unsigned int unk5;
 }ScannerConfigs[MAX_JOY_EVENT]; // we're generating scanners for ALL JoyEvents - not something devs normally do
 
 // we use this to track the state of each button for each event
@@ -210,6 +217,20 @@ void DummyFunc()
 {
 	return;
 }
+
+// UG1 uses fastcall and works without this so we won't apply it to UG1
+#ifndef GAME_UG
+ScannerConfig* FindScannerConfig_Custom(unsigned int inJoyEvent, int confignum, int unk)
+{
+	for (unsigned int i = 0; i < MAX_JOY_EVENT; i++)
+	{
+		if (ScannerConfigs[i].JoyEvent == inJoyEvent)
+			return &(ScannerConfigs[i]);
+	}
+
+	return 0;
+}
+#endif
 
 int bStringHash(char* a1)
 {
@@ -892,6 +913,8 @@ int Scanner_Analog(void* EventNode, unsigned int* unk1, unsigned int unk2, Scann
 	if (inScannerConfig->JoyEvent == JOY_EVENT_CARSEL_ORBIT_UPDOWN)
 		axis = -axis;
 
+	printf("%s 0x%hX\n", JoyEventNames[inScannerConfig->JoyEvent], inScannerConfig->JoyEvent + (axis << 8));
+
 	if ((axis != EventStates[ci][inScannerConfig->JoyEvent]) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
 	{
 		EventStates[ci][inScannerConfig->JoyEvent] = axis;
@@ -1018,6 +1041,9 @@ void SetupScannerConfig()
 		}
 	}
 	ScannerConfigs[JOY_EVENT_TYPE_CHANGED].ScannerFunctionPointer = (unsigned int)&Scanner_TypeChanged;
+#ifdef GAME_UG2
+	ScannerConfigs[JOY_EVENT_LIVE_TYPE_CHANGED].ScannerFunctionPointer = (unsigned int)&Scanner_TypeChanged;
+#endif
 	//ScannerConfigs[JOY_EVENT_ANY].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalAnyButton;
 
 	// read steering VK codes
@@ -1133,7 +1159,7 @@ HRESULT UpdateControllerState()
 
 	// check controller & KB state for P1
 	if (KeyboardState || g_Controllers[0].bConnected)
-		*(unsigned char*)JOYSTICKTYPE_P1_ADDR = 0;
+		*(unsigned char*)JOYSTICKTYPE_P1_ADDR = 1;
 	else
 		*(unsigned char*)JOYSTICKTYPE_P1_ADDR = 0xFF;
 	
@@ -1147,9 +1173,10 @@ void ReadXInput_Extra()
 	if (g_Controllers[0].bConnected)
 	{
 		WORD wButtons = g_Controllers[0].state.Gamepad.wButtons;
-
+#ifdef GAME_UG
 		if (*(int*)GAMEFLOWMANAGER_STATUS_ADDR == 3)
 		{
+
 			if ((wButtons & XINPUT_GAMEPAD_Y))
 				*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'D'; // delete profile
 
@@ -1162,6 +1189,18 @@ void ReadXInput_Extra()
 				*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'Q';
 			bQuitButtonOldState = (wButtons & XINPUT_GAMEPAD_BACK);
 		}
+#endif
+#ifdef GAME_UG2
+		if ((wButtons & XINPUT_GAMEPAD_BACK) != bQuitButtonOldState)
+		{
+			if ((wButtons & XINPUT_GAMEPAD_BACK)) // trigger once only on button down state
+				FESendKeystroke('Q');
+				//*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'Q';
+			bQuitButtonOldState = (wButtons & XINPUT_GAMEPAD_BACK);
+		}
+#endif
+
+
 	}
 }
 
@@ -1180,9 +1219,10 @@ void InitConfig()
 
 	KeyboardReadingMode = inireader.ReadInteger("Input", "KeyboardReadingMode", 0);
 	bAllowTwoPlayerKB = inireader.ReadInteger("Input", "AllowTwoPlayerKB", 0);
+#ifdef GAME_UG
 	ControllerIconMode = inireader.ReadInteger("Icons", "ControllerIconMode", 0);
 	LastControlledDevice = inireader.ReadInteger("Icons", "FirstControlDevice", 0);
-
+#endif
 	SetupScannerConfig();
 }
 
@@ -1190,11 +1230,17 @@ int Init()
 {
 	// kill DInput8 joypad reading & event generation
 	injector::MakeJMP(EVENTGEN_JMP_ADDR_ENTRY, EVENTGEN_JMP_ADDR_EXIT, true);
+#ifdef GAME_UG
 	// hook FEng globally in FEPkgMgr_SendMessageToPackage
 	injector::MakeJMP(FENG_SENDMSG_HOOK_ADDR, FEngGlobalCave, true);
+
 	// snoop last activated FEng package
 	injector::MakeCALL(0x004F3BC3, SnoopLastFEPackage, true);
-
+#endif
+#ifndef GAME_UG
+	// force controller config to be 0xFF because it's kinda buggy
+	injector::MakeJMP(FINDSCANNERCONFIG_ADDR, FindScannerConfig_Custom, true);
+#endif
 	// this kills DInput enumeration COMPLETELY -- even the keyboard
 	injector::MakeJMP(DINPUTENUM_JMP_ADDR_ENTRY, DINPUTENUM_JMP_ADDR_EXIT, true);
 	// kill game input reading
@@ -1202,19 +1248,20 @@ int Init()
 
 	// Replace ActualReadJoystickData with ReadControllerData
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR1, ReadControllerData, true);
+#ifdef GAME_UG
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR2, ReadControllerData, true);
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR3, ReadControllerData, true);
-
+#endif
 	// reroute ScannerConfig table
 	injector::WriteMemory(SCANNERCONFIG_POINTER_ADDR, ScannerConfigs, true);
 	*(int*)0x00704140 = MAX_JOY_EVENT;
 
 	// KB input init
 	injector::MakeCALL(INITJOY_CALL_ADDR, InitCustomKBInput, true);
-
+#ifdef GAME_UG
 	// hook for OptionsSelectorMenu::NotificationMessage to disable controller options (for now)
 	injector::WriteMemory<unsigned int>(OPTIONSSELECTOR_VTABLE_FUNC_ADDR, (unsigned int)&OptionsSelectorMenu_NotificationMessage_Hook, true);
-
+#endif
 	// dereference the current WndProc from the game executable and write to the function pointer (to maximize compatibility)
 	GameWndProcAddr = *(unsigned int*)WNDPROC_POINTER_ADDR;
 	GameWndProc = (LRESULT(WINAPI*)(HWND, UINT, WPARAM, LPARAM))GameWndProcAddr;
@@ -1233,8 +1280,8 @@ BOOL APIENTRY DllMain(HMODULE /*hModule*/, DWORD reason, LPVOID /*lpReserved*/)
 {
 	if (reason == DLL_PROCESS_ATTACH)
 	{
-		//freopen("CON", "w", stdout);
-		//freopen("CON", "w", stderr);
+		freopen("CON", "w", stdout);
+		freopen("CON", "w", stderr);
 		Init();
 	}
 	return TRUE;
