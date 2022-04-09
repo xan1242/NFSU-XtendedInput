@@ -876,7 +876,8 @@ bool bIsEventDigitalDownOnly(unsigned int joyevent)
 		|| (joyevent == JOY_EVENT_PAUSE) 
 		|| (joyevent == JOY_EVENT_SKIP) 
 		|| (joyevent == JOY_EVENT_CHANGE_DEBUG_CAMERA)
-		|| (joyevent == JOY_EVENT_CYCLE_HUD);
+		|| (joyevent == JOY_EVENT_CYCLE_HUD)
+		|| (joyevent == JOY_EVENT_DEBUG_CAMERA_DROP_CAR);
 }
 
 bool bIsEventAnalog(unsigned int joyevent)
