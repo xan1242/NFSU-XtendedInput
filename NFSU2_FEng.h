@@ -58,11 +58,8 @@ void UpdateFECursorPos()
 
 
 	// car orbiting position calculation - always relative to old
-	if (bMouse2PressedDown)
-	{
-		*(int*)FEMOUSECURSOR_CARORBIT_X_ADDR = MousePos.x - *(int*)FEMOUSECURSOR_X_ADDR;
-		*(int*)FEMOUSECURSOR_CARORBIT_Y_ADDR = MousePos.y - *(int*)FEMOUSECURSOR_Y_ADDR;
-	}
+	*(int*)FEMOUSECURSOR_CARORBIT_X_ADDR = MousePos.x - *(int*)FEMOUSECURSOR_X_ADDR;
+	*(int*)FEMOUSECURSOR_CARORBIT_Y_ADDR = MousePos.y - *(int*)FEMOUSECURSOR_Y_ADDR;
 
 	if (!bMouseInGameWindow)
 		SetCursor(LoadCursor(NULL, IDC_ARROW));
