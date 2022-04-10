@@ -1,10 +1,10 @@
-# Need for Speed (Black Box) - Xtended Input
+# Need for Speed Underground & Underground 2 - Xtended Input
 
 This is a plugin for NFS Underground & Underground 2 which brings XInput support to the games!
 
 Currently a work in progress, but fully usable and playable!
 
-Planned to bring to other NFS games in the future!
+Planned to bring to other NFS games in the future! (in the form of another project)
 
 ## Features
 

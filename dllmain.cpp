@@ -1,4 +1,4 @@
-﻿// Need for Speed (Black Box) - Xtended Input plugin
+﻿// Need for Speed Underground & Underground 2 - Xtended Input plugin
 // Bringing native XInput to NFS
 // by Xan/Tenjoin
 
