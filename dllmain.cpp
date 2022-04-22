@@ -42,19 +42,18 @@
 #include "NFSU_XtendedInput_VKHash.h"
 
 #define MAX_CONTROLLERS 4  // XInput handles up to 4 controllers 
-float DeadzonePercentLS = 0.24f;
-float DeadzonePercentRS = 0.24f;
-float DeadzonePercentLS_P2 = 0.24f;
-float DeadzonePercentRS_P2 = 0.24f;
 
 WORD INPUT_DEADZONE_LS = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
 WORD INPUT_DEADZONE_RS = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
 WORD INPUT_DEADZONE_LS_P2 = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
 WORD INPUT_DEADZONE_RS_P2 = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
+WORD SHIFT_ANALOG_THRESHOLD = (0.62f * FLOAT(0x7FFF));  // 62% for shifting
+WORD FEUPDOWN_ANALOG_THRESHOLD = (0.50f * FLOAT(0x7FFF));  // 50% for analog sticks digital activation
+WORD TRIGGER_ACTIVATION_THRESHOLD = (0.12f * FLOAT(0xFF));  // 12% for analog triggers digital activation
 
-#define TRIGGER_ACTIVATION_THRESHOLD 0x20
-#define SHIFT_ANALOG_THRESHOLD 0x5000
-#define FEUPDOWN_ANALOG_THRESHOLD 0x3FFF
+//#define TRIGGER_ACTIVATION_THRESHOLD 0x20
+//#define SHIFT_ANALOG_THRESHOLD 0x5000
+//#define FEUPDOWN_ANALOG_THRESHOLD 0x3FFF
 
 // for triggering the over-zelaous inputs once in a tick...
 WORD bQuitButtonOldState = 0;
@@ -1280,15 +1279,14 @@ void InitConfig()
 	bConfineMouse = inireader.ReadInteger("Input", "ConfineMouse", 0);
 #endif
 
-	DeadzonePercentLS = inireader.ReadFloat("Input", "DeadzonePercentLS", 0.24f);
-	INPUT_DEADZONE_LS = (DeadzonePercentLS * FLOAT(0x7FFF));
-	DeadzonePercentRS = inireader.ReadFloat("Input", "DeadzonePercentRS", 0.24f);
-	INPUT_DEADZONE_RS = (DeadzonePercentRS * FLOAT(0x7FFF));
-	DeadzonePercentLS_P2 = inireader.ReadFloat("Input", "DeadzonePercentLS_P2", 0.24f);
-	INPUT_DEADZONE_LS_P2 = (DeadzonePercentLS_P2 * FLOAT(0x7FFF));
-	DeadzonePercentRS_P2 = inireader.ReadFloat("Input", "DeadzonePercentRS_P2", 0.24f);
-	INPUT_DEADZONE_RS_P2 = (DeadzonePercentRS_P2 * FLOAT(0x7FFF));
-
+	INPUT_DEADZONE_LS = (inireader.ReadFloat("Input", "DeadzonePercentLS", 0.24f) * FLOAT(0x7FFF));
+	INPUT_DEADZONE_RS = (inireader.ReadFloat("Input", "DeadzonePercentRS", 0.24f) * FLOAT(0x7FFF));
+	INPUT_DEADZONE_LS_P2 = (inireader.ReadFloat("Input", "DeadzonePercentLS_P2", 0.24f) * FLOAT(0x7FFF));
+	INPUT_DEADZONE_RS_P2 = (inireader.ReadFloat("Input", "DeadzonePercentRS_P2", 0.24f) * FLOAT(0x7FFF));
+	SHIFT_ANALOG_THRESHOLD = (inireader.ReadFloat("Input", "DeadzonePercent_Shifting", 0.62f) * FLOAT(0x7FFF));
+	FEUPDOWN_ANALOG_THRESHOLD = (inireader.ReadFloat("Input", "DeadzonePercent_AnalogStickDigital", 0.50f) * FLOAT(0x7FFF));
+	TRIGGER_ACTIVATION_THRESHOLD = (inireader.ReadFloat("Input", "DeadzonePercent_AnalogTriggerDigital", 0.12f) * FLOAT(0x7FFF));
+	
 	SetupScannerConfig();
 }
 
