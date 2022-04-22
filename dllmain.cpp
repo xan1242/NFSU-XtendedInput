@@ -42,7 +42,15 @@
 #include "NFSU_XtendedInput_VKHash.h"
 
 #define MAX_CONTROLLERS 4  // XInput handles up to 4 controllers 
-#define INPUT_DEADZONE  ( 0.24f * FLOAT(0x7FFF) )  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
+float DeadzonePercentLS = 0.24f;
+float DeadzonePercentRS = 0.24f;
+float DeadzonePercentLS_P2 = 0.24f;
+float DeadzonePercentRS_P2 = 0.24f;
+
+WORD INPUT_DEADZONE_LS = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
+WORD INPUT_DEADZONE_RS = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
+WORD INPUT_DEADZONE_LS_P2 = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
+WORD INPUT_DEADZONE_RS_P2 = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
 
 #define TRIGGER_ACTIVATION_THRESHOLD 0x20
 #define SHIFT_ANALOG_THRESHOLD 0x5000
@@ -1143,19 +1151,19 @@ HRESULT UpdateControllerState()
 		g_Controllers[0].bConnected = true;
 
 		// Zero value if thumbsticks are within the dead zone 
-		if ((g_Controllers[0].state.Gamepad.sThumbLX < INPUT_DEADZONE &&
-			g_Controllers[0].state.Gamepad.sThumbLX > -INPUT_DEADZONE) &&
-			(g_Controllers[0].state.Gamepad.sThumbLY < INPUT_DEADZONE &&
-				g_Controllers[0].state.Gamepad.sThumbLY > -INPUT_DEADZONE))
+		if ((g_Controllers[0].state.Gamepad.sThumbLX < INPUT_DEADZONE_LS &&
+			g_Controllers[0].state.Gamepad.sThumbLX > -INPUT_DEADZONE_LS) &&
+			(g_Controllers[0].state.Gamepad.sThumbLY < INPUT_DEADZONE_LS &&
+				g_Controllers[0].state.Gamepad.sThumbLY > -INPUT_DEADZONE_LS))
 		{
 			g_Controllers[0].state.Gamepad.sThumbLX = 0;
 			g_Controllers[0].state.Gamepad.sThumbLY = 0;
 		}
 
-		if ((g_Controllers[0].state.Gamepad.sThumbRX < INPUT_DEADZONE &&
-			g_Controllers[0].state.Gamepad.sThumbRX > -INPUT_DEADZONE) &&
-			(g_Controllers[0].state.Gamepad.sThumbRY < INPUT_DEADZONE &&
-				g_Controllers[0].state.Gamepad.sThumbRY > -INPUT_DEADZONE))
+		if ((g_Controllers[0].state.Gamepad.sThumbRX < INPUT_DEADZONE_RS &&
+			g_Controllers[0].state.Gamepad.sThumbRX > -INPUT_DEADZONE_RS) &&
+			(g_Controllers[0].state.Gamepad.sThumbRY < INPUT_DEADZONE_RS &&
+				g_Controllers[0].state.Gamepad.sThumbRY > -INPUT_DEADZONE_RS))
 		{
 			g_Controllers[0].state.Gamepad.sThumbRX = 0;
 			g_Controllers[0].state.Gamepad.sThumbRY = 0;
@@ -1177,19 +1185,19 @@ HRESULT UpdateControllerState()
 		g_Controllers[1].bConnected = true;
 		* (unsigned char*)JOYSTICKTYPE_P2_ADDR = 0;
 		// Zero value if thumbsticks are within the dead zone 
-		if ((g_Controllers[1].state.Gamepad.sThumbLX < INPUT_DEADZONE &&
-			g_Controllers[1].state.Gamepad.sThumbLX > -INPUT_DEADZONE) &&
-			(g_Controllers[1].state.Gamepad.sThumbLY < INPUT_DEADZONE &&
-				g_Controllers[1].state.Gamepad.sThumbLY > -INPUT_DEADZONE))
+		if ((g_Controllers[1].state.Gamepad.sThumbLX < INPUT_DEADZONE_LS_P2 &&
+			g_Controllers[1].state.Gamepad.sThumbLX > -INPUT_DEADZONE_LS_P2) &&
+			(g_Controllers[1].state.Gamepad.sThumbLY < INPUT_DEADZONE_LS_P2 &&
+				g_Controllers[1].state.Gamepad.sThumbLY > -INPUT_DEADZONE_LS_P2))
 		{
 			g_Controllers[1].state.Gamepad.sThumbLX = 0;
 			g_Controllers[1].state.Gamepad.sThumbLY = 0;
 		}
 
-		if ((g_Controllers[1].state.Gamepad.sThumbRX < INPUT_DEADZONE &&
-			g_Controllers[1].state.Gamepad.sThumbRX > -INPUT_DEADZONE) &&
-			(g_Controllers[1].state.Gamepad.sThumbRY < INPUT_DEADZONE &&
-				g_Controllers[1].state.Gamepad.sThumbRY > -INPUT_DEADZONE))
+		if ((g_Controllers[1].state.Gamepad.sThumbRX < INPUT_DEADZONE_RS_P2 &&
+			g_Controllers[1].state.Gamepad.sThumbRX > -INPUT_DEADZONE_RS_P2) &&
+			(g_Controllers[1].state.Gamepad.sThumbRY < INPUT_DEADZONE_RS_P2 &&
+				g_Controllers[1].state.Gamepad.sThumbRY > -INPUT_DEADZONE_RS_P2))
 		{
 			g_Controllers[1].state.Gamepad.sThumbRX = 0;
 			g_Controllers[1].state.Gamepad.sThumbRY = 0;
@@ -1271,6 +1279,15 @@ void InitConfig()
 #ifndef GAME_UG
 	bConfineMouse = inireader.ReadInteger("Input", "ConfineMouse", 0);
 #endif
+
+	DeadzonePercentLS = inireader.ReadFloat("Input", "DeadzonePercentLS", 0.24f);
+	INPUT_DEADZONE_LS = (DeadzonePercentLS * FLOAT(0x7FFF));
+	DeadzonePercentRS = inireader.ReadFloat("Input", "DeadzonePercentRS", 0.24f);
+	INPUT_DEADZONE_RS = (DeadzonePercentRS * FLOAT(0x7FFF));
+	DeadzonePercentLS_P2 = inireader.ReadFloat("Input", "DeadzonePercentLS_P2", 0.24f);
+	INPUT_DEADZONE_LS_P2 = (DeadzonePercentLS_P2 * FLOAT(0x7FFF));
+	DeadzonePercentRS_P2 = inireader.ReadFloat("Input", "DeadzonePercentRS_P2", 0.24f);
+	INPUT_DEADZONE_RS_P2 = (DeadzonePercentRS_P2 * FLOAT(0x7FFF));
 
 	SetupScannerConfig();
 }
