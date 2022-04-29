@@ -4,7 +4,7 @@ This is a plugin for NFS Underground & Underground 2 which brings XInput support
 
 Currently a work in progress, but fully usable and playable!
 
-Planned to bring to other NFS games in the future! (in the form of another project)
+For the newer NFS titles by Black Box, check out [NFS_XtendedInput](https://github.com/xan1242/NFS-XtendedInput)
 
 ## Features
 
