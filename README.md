@@ -24,7 +24,7 @@ For the newer NFS titles by Black Box, check out [NFS_XtendedInput](https://gith
 
 ## Button mappings
 
-You may remap the buttons in the configuration file (NFSU_XtendedInput.ini), however as of now there is 1 limitation: you may only assign 1 button to an event (and vice versa, 1 event to a button). Refer to the EventReference.txt file to see what's available.
+You may remap the buttons in the configuration file (NFSU_XtendedInput.ini), however as of now there is 1 limitation: you may only assign 1 button to an event. Refer to the EventReference.txt file to see what's available.
 
 Default controller button mappings are:
 
