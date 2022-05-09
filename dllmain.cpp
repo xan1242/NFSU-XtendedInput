@@ -14,7 +14,6 @@
 #include "stdafx.h"
 #include "stdio.h"
 #include <windows.h>
-#include <bitset>
 #include "includes\injector\injector.hpp"
 #include "includes\IniReader.h"
 
@@ -51,10 +50,6 @@ WORD INPUT_DEADZONE_RS_P2 = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +
 WORD SHIFT_ANALOG_THRESHOLD = (0.62f * FLOAT(0x7FFF));  // 62% for shifting
 WORD FEUPDOWN_ANALOG_THRESHOLD = (0.50f * FLOAT(0x7FFF));  // 50% for analog sticks digital activation
 WORD TRIGGER_ACTIVATION_THRESHOLD = (0.12f * FLOAT(0xFF));  // 12% for analog triggers digital activation
-
-//#define TRIGGER_ACTIVATION_THRESHOLD 0x20
-//#define SHIFT_ANALOG_THRESHOLD 0x5000
-//#define FEUPDOWN_ANALOG_THRESHOLD 0x3FFF
 
 // for triggering the over-zelaous inputs once in a tick...
 WORD bQuitButtonOldState = 0;
