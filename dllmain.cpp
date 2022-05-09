@@ -2,6 +2,7 @@
 // Bringing native XInput to NFS
 // by Xan/Tenjoin
 
+// TODO: BACKPORT STUFF FROM NFS_XtendedInput! Lots of stuff had been developed since this code was last updated!
 // TODO: bring rumble/vibration function
 // TODO: remapping? -- partially done, but only 1 event per key and 1 key per event
 // TODO: kill DInput enough so that it doesn't detect XInput controllers but still detects wheels
