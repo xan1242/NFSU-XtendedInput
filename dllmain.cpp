@@ -47,7 +47,7 @@ WORD INPUT_DEADZONE_LS = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 
 WORD INPUT_DEADZONE_RS = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
 WORD INPUT_DEADZONE_LS_P2 = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
 WORD INPUT_DEADZONE_RS_P2 = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
-WORD SHIFT_ANALOG_THRESHOLD = (0.62f * FLOAT(0x7FFF));  // 62% for shifting
+WORD SHIFT_ANALOG_THRESHOLD = (0.75f * FLOAT(0x7FFF));  // 75% for shifting
 WORD FEUPDOWN_ANALOG_THRESHOLD = (0.50f * FLOAT(0x7FFF));  // 50% for analog sticks digital activation
 WORD TRIGGER_ACTIVATION_THRESHOLD = (0.12f * FLOAT(0xFF));  // 12% for analog triggers digital activation
 
@@ -303,6 +303,23 @@ int Scanner_DigitalUpOrDown_XInput(void* EventNode, unsigned int* unk1, unsigned
 	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
 
 	//printf("Scanner: %x %x %x %x %x\n", EventNode, unk1, unk2, inScannerConfig, Joystick);
+
+	// throttle/brake is very time sensitive, so we return all the time
+	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
+	{
+		// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+		if ((wButtons & inScannerConfig->BitmaskStuff))
+		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (wButtons & inScannerConfig->BitmaskStuff);
+			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+		}
+		// on change to FALSE -- return JoyEvent number
+		if (!(wButtons & inScannerConfig->BitmaskStuff))
+		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (wButtons & inScannerConfig->BitmaskStuff);
+			return inScannerConfig->JoyEvent;
+		}
+	}
 
 	// we're using BitmaskStuff to define which button is actually pressed
 	if ((wButtons & inScannerConfig->BitmaskStuff) != EventStates[ci][inScannerConfig->JoyEvent])
@@ -1275,13 +1292,13 @@ void InitConfig()
 	bConfineMouse = inireader.ReadInteger("Input", "ConfineMouse", 0);
 #endif
 
-	INPUT_DEADZONE_LS = (inireader.ReadFloat("Input", "DeadzonePercentLS", 0.24f) * FLOAT(0x7FFF));
-	INPUT_DEADZONE_RS = (inireader.ReadFloat("Input", "DeadzonePercentRS", 0.24f) * FLOAT(0x7FFF));
-	INPUT_DEADZONE_LS_P2 = (inireader.ReadFloat("Input", "DeadzonePercentLS_P2", 0.24f) * FLOAT(0x7FFF));
-	INPUT_DEADZONE_RS_P2 = (inireader.ReadFloat("Input", "DeadzonePercentRS_P2", 0.24f) * FLOAT(0x7FFF));
-	SHIFT_ANALOG_THRESHOLD = (inireader.ReadFloat("Input", "DeadzonePercent_Shifting", 0.62f) * FLOAT(0x7FFF));
-	FEUPDOWN_ANALOG_THRESHOLD = (inireader.ReadFloat("Input", "DeadzonePercent_AnalogStickDigital", 0.50f) * FLOAT(0x7FFF));
-	TRIGGER_ACTIVATION_THRESHOLD = (inireader.ReadFloat("Input", "DeadzonePercent_AnalogTriggerDigital", 0.12f) * FLOAT(0xFF));
+	INPUT_DEADZONE_LS = (inireader.ReadFloat("Deadzone", "DeadzonePercentLS", 0.24f) * FLOAT(0x7FFF));
+	INPUT_DEADZONE_RS = (inireader.ReadFloat("Deadzone", "DeadzonePercentRS", 0.24f) * FLOAT(0x7FFF));
+	INPUT_DEADZONE_LS_P2 = (inireader.ReadFloat("Deadzone", "DeadzonePercentLS_P2", 0.24f) * FLOAT(0x7FFF));
+	INPUT_DEADZONE_RS_P2 = (inireader.ReadFloat("Deadzone", "DeadzonePercentRS_P2", 0.24f) * FLOAT(0x7FFF));
+	SHIFT_ANALOG_THRESHOLD = (inireader.ReadFloat("Deadzone", "DeadzonePercent_Shifting", 0.62f) * FLOAT(0x7FFF));
+	FEUPDOWN_ANALOG_THRESHOLD = (inireader.ReadFloat("Deadzone", "DeadzonePercent_AnalogStickDigital", 0.50f) * FLOAT(0x7FFF));
+	TRIGGER_ACTIVATION_THRESHOLD = (inireader.ReadFloat("Deadzone", "DeadzonePercent_AnalogTriggerDigital", 0.12f) * FLOAT(0xFF));
 	
 	SetupScannerConfig();
 }
