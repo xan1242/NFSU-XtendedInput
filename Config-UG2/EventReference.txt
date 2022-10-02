@@ -67,6 +67,24 @@ Both ports are monitored for XInput separately, whereas on keyboard they're not 
 
 NOTE: some events (such as quitting with Q key) are hardcoded due to the way they're coded in the game
 
+== STEER INPUT SPECIAL NOTES ==
+
+Due to the buggy nature of the steer input handler, its code had to be rewritten.
+This *only* affects regular races, as drag races use a different event.
+This also enables higher resolution readout from the gamepad axis, as well as the ability to assign steering to both the analog axis and the digital buttons.
+
+These are the special assignments available for steering input (gamepad):
+SteerLeftButton -- you may only assign buttons to these, not analog axis
+SteerRightButton
+SteerLeftAxis -- you may only assign analog axis to these, not buttons
+SteerRightAxis
+
+These are the special assignments available for steering input (keyboard):
+KeyboardSteerLeft
+KeyboardSteerRight
+
+== REGULAR EVENTS ==
+
 JOY_EVENT_NULL
 JOY_EVENT_TYPE_CHANGED
 JOY_EVENT_LIVE_TYPE_CHANGED
@@ -202,8 +220,8 @@ JOY_EVENT_REPLAY_HIDE_TIMELINE
 JOY_EVENT_REPLAY_MARK_DEMO 
 JOY_EVENT_REPLAY_TEST_DEMO 
 JOY_EVENT_REPLAY_ERASE_DEMO 
-JOY_EVENT_STEER -- you may only assign an analog axis or DPAD, nothing else
-JOY_EVENT_STEER_ANALOG -- breaks right after using JOY_EVENT_STEER (JOY_EVENT_STEER is analog as well anyway)
+JOY_EVENT_STEER -- steer input is NOT handled by the game code, therefore this event is not read
+JOY_EVENT_STEER_ANALOG -- same as previous steer event - not handled by game code, not parsed
 JOY_EVENT_THROTTLE 
 JOY_EVENT_THROTTLE_ANALOG 
 JOY_EVENT_THROTTLE_ANALOG_ALTERNATE 

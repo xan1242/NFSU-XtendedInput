@@ -56,6 +56,12 @@ WORD bQuitButtonOldState = 0;
 WORD bYButtonOldState = 0;
 WORD bXButtonOldState = 0;
 
+// steering axis & buttons
+WORD SteerLeftButton = 0; // defaulting digital steer to 0 because of predefined functions
+WORD SteerRightButton = 0;
+WORD SteerLeftAxis = XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF;
+WORD SteerRightAxis = XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF;
+
 struct CONTROLLER_STATE
 {
 	XINPUT_STATE state;
@@ -349,7 +355,7 @@ int Scanner_DigitalUpOrDown_RawKB(void* EventNode, unsigned int* unk1, unsigned 
 		ci = 1;
 
 	// throttle is very time sensitive, so we return all the time
-	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_STEER_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_STEER))
+	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
 	{
 
 		if (VKeyStates[ci][inScannerConfig->keycode])
@@ -391,7 +397,7 @@ int Scanner_DigitalUpOrDown_SyncKB(void* EventNode, unsigned int* unk1, unsigned
 	bool bKeyState = VKeyStates[0][inScannerConfig->keycode] >> 7;
 
 	// throttle is very time sensitive, so we return all the time
-	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_STEER_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_STEER))
+	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
 	{
 		if (bKeyState)
 		{
@@ -485,116 +491,6 @@ int Scanner_DigitalUpOrDown_KB(void* EventNode, unsigned int* unk1, unsigned int
 int Scanner_DigitalUpOrDown(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	return Scanner_DigitalUpOrDown_XInput(EventNode, unk1, unk2, inScannerConfig, Joystick) | Scanner_DigitalUpOrDown_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
-}
-
-int Scanner_DigitalSteer(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
-{
-	int ci = 0;
-	if ((int)Joystick == JOY2_ADDR)
-		ci = 1;
-
-	WORD wButtons = g_Controllers[ci].state.Gamepad.wButtons;
-
-	// D-Pad steering
-	// we only accept dpad in this case (and read left/right), if it's any other button, ignore
-	if (inScannerConfig->BitmaskStuff2 != XINPUT_GAMEPAD_DPAD_CONFIGDEF)
-		return inScannerConfig->JoyEvent + ((inScannerConfig->param / 2) << 8);
-	// if a direction is pressed
-	if (((wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)) != EventStates[ci][inScannerConfig->JoyEvent])
-	{
-		// on change to TRUE
-		if ((wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT))
-		{
-			if ((wButtons & XINPUT_GAMEPAD_DPAD_LEFT))
-			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
-				return inScannerConfig->JoyEvent; // steer left = 0
-			}
-			if ((wButtons & XINPUT_GAMEPAD_DPAD_RIGHT))
-			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8); // steer right = max param = 0xFF
-			}
-		}
-		// on change to FALSE -- return JoyEvent number + parameter / 2 = center
-		if (!((wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT)))
-		{
-			EventStates[ci][inScannerConfig->JoyEvent] = ((wButtons & XINPUT_GAMEPAD_DPAD_LEFT) || (wButtons & XINPUT_GAMEPAD_DPAD_RIGHT));
-			return inScannerConfig->JoyEvent + ((inScannerConfig->param / 2) << 8); // center steer = param / 2 = 0x7F
-		}
-	}
-
-	return 0;
-}
-
-int Scanner_DigitalSteer_RawKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
-{
-	int ci = 0;
-	if ((int)Joystick == 0x73B3EC)
-		ci = 1;
-
-	unsigned int outparam = inScannerConfig->param / 2;
-
-	// if a direction is pressed
-	if ((VKeyStates[ci][SteerLeftVKey] || VKeyStates[ci][SteerRightVKey]))
-	{
-		if (VKeyStates[ci][SteerLeftVKey])
-			outparam = outparam - inScannerConfig->param / 2;
-		if (VKeyStates[ci][SteerRightVKey])
-			outparam = outparam + inScannerConfig->param / 2;
-	}
-		
-	return inScannerConfig->JoyEvent + (outparam << 8);
-}
-
-int Scanner_DigitalSteer_SyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
-{
-	bool bKeyStateLeft = VKeyStates[0][SteerLeftVKey] >> 7;
-	bool bKeyStateRight = VKeyStates[0][SteerRightVKey] >> 7;
-	unsigned int outparam = inScannerConfig->param / 2;
-
-	// if a direction is pressed
-	if ((bKeyStateLeft || bKeyStateRight))
-	{
-		if (bKeyStateLeft)
-			outparam = outparam - inScannerConfig->param / 2;
-		if (bKeyStateRight)
-			outparam = outparam + inScannerConfig->param / 2;
-	}
-
-	return inScannerConfig->JoyEvent + (outparam << 8);
-}
-
-int Scanner_DigitalSteer_AsyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
-{
-	bool bKeyStateLeft = GetAsyncKeyState(SteerLeftVKey) >> 15;
-	bool bKeyStateRight = GetAsyncKeyState(SteerRightVKey) >> 15;
-	unsigned int outparam = inScannerConfig->param / 2;
-
-	// if a direction is pressed
-	if ((bKeyStateLeft || bKeyStateRight))
-	{
-		if (bKeyStateLeft)
-			outparam = outparam - inScannerConfig->param / 2;
-		if (bKeyStateRight)
-			outparam = outparam + inScannerConfig->param / 2;
-	}
-
-	return inScannerConfig->JoyEvent + (outparam << 8);
-}
-
-int Scanner_DigitalSteer_KB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
-{
-	switch (KeyboardReadingMode)
-	{
-	case KB_READINGMODE_UNBUFFERED_RAW:
-		return Scanner_DigitalSteer_RawKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
-	case KB_READINGMODE_BUFFERED:
-		return Scanner_DigitalSteer_SyncKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
-	case KB_READINGMODE_UNBUFFERED_ASYNC:
-	default:
-		return Scanner_DigitalSteer_AsyncKB(EventNode, unk1, unk2, inScannerConfig, Joystick);
-	}
 }
 
 // same thing as DigitalUpOrDown except no KEY UP detection, only KEY DOWN
@@ -1028,22 +924,127 @@ int Scanner_Analog_DragSteer(void* EventNode, unsigned int* unk1, unsigned int u
 	return 0;
 }
 
-int Scanner_CombinedSteering(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+// STEERING HANDLER
+float GetAnalogStickValue(int index, WORD bind)
 {
-	int result = Scanner_Analog(EventNode, unk1, unk2, inScannerConfig, Joystick);
-
-	if (LastControlledDevice == LASTCONTROLLED_KB)
-		return Scanner_DigitalSteer_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
-
+	float result = 0.0f;
+	int rdi = index;
+	switch (bind)
+	{
+	case XINPUT_GAMEPAD_LT_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.bLeftTrigger / 255.0f;
+		break;
+	case XINPUT_GAMEPAD_RT_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.bRightTrigger / 255.0f;
+		break;
+	case XINPUT_GAMEPAD_LS_X_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.sThumbLX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_X_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.sThumbRX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_Y_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.sThumbLY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_Y_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.sThumbRY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_UP_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbLY > 0)
+			result = g_Controllers[rdi].state.Gamepad.sThumbLY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbLY < 0)
+			result = -g_Controllers[rdi].state.Gamepad.sThumbLY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbLX < 0)
+			result = -g_Controllers[rdi].state.Gamepad.sThumbLX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbLX > 0)
+			result = g_Controllers[rdi].state.Gamepad.sThumbLX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_UP_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbRY > 0)
+			result = g_Controllers[rdi].state.Gamepad.sThumbRY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbRY < 0)
+			result = -g_Controllers[rdi].state.Gamepad.sThumbRY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbRX < 0)
+			result = -g_Controllers[rdi].state.Gamepad.sThumbRX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbRX > 0)
+			result = g_Controllers[rdi].state.Gamepad.sThumbRX / (float)(0x7FFF);
+		break;
+	default:
+		break;
+	}
 	return result;
 }
 
-int Scanner_CombinedDigitalSteering(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+void RealDriver_JoyHandler_Steer(int JoystickPort, int JoyEvent, char Value, void* RealDriver)
 {
-	if (LastControlledDevice == LASTCONTROLLED_KB)
-		return Scanner_DigitalSteer_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	float* SteerVal = (float*)((int)RealDriver + REALDRIVER_STEER_OFFSET);
+	float AnalogSteerValue = GetAnalogStickValue(JoystickPort, SteerLeftAxis) - GetAnalogStickValue(JoystickPort, SteerRightAxis);
+	float DigitalSteerValue = 0.0f;
+	float DigitalSteerValueKB = 0.0f;
+	float FinalSteerValue;
 
-	return Scanner_DigitalSteer(EventNode, unk1, unk2, inScannerConfig, Joystick);
+	// get gamepad digital steering
+	WORD wButtons = g_Controllers[JoystickPort].state.Gamepad.wButtons;
+	if (wButtons & SteerLeftButton)
+	{
+		DigitalSteerValue = DigitalSteerValue + 1.0;
+	}
+	if (wButtons & SteerRightButton)
+	{
+		DigitalSteerValue = DigitalSteerValue - 1.0;
+	}
+
+	// get KB digital steering
+	switch (KeyboardReadingMode)
+	{
+	case KB_READINGMODE_UNBUFFERED_RAW:
+		if (VKeyStates[JoystickPort][SteerLeftVKey])
+			DigitalSteerValueKB = DigitalSteerValueKB + 1.0;
+		if (VKeyStates[JoystickPort][SteerRightVKey])
+			DigitalSteerValueKB = DigitalSteerValueKB - 1.0;
+		break;
+	case KB_READINGMODE_BUFFERED:
+		if (VKeyStates[0][SteerLeftVKey] >> 7)
+			DigitalSteerValueKB = DigitalSteerValueKB + 1.0;
+		if (VKeyStates[0][SteerRightVKey] >> 7)
+			DigitalSteerValueKB = DigitalSteerValueKB - 1.0;
+		break;
+	case KB_READINGMODE_UNBUFFERED_ASYNC:
+	default:
+		if (GetAsyncKeyState(SteerLeftVKey) >> 15)
+			DigitalSteerValueKB = DigitalSteerValueKB + 1.0;
+		if (GetAsyncKeyState(SteerRightVKey) >> 15)
+			DigitalSteerValueKB = DigitalSteerValueKB - 1.0;
+		break;
+	}
+
+	FinalSteerValue = AnalogSteerValue + DigitalSteerValue + DigitalSteerValueKB;
+
+	// cap the min/max
+	if (FinalSteerValue > 1.0)
+		FinalSteerValue = 1.0;
+	if (FinalSteerValue < -1.0)
+		FinalSteerValue = -1.0;
+
+	*SteerVal = FinalSteerValue;
+}
+
+int Scanner_CombinedSteering(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	// always return a value to trigger polling
+	return inScannerConfig->JoyEvent + (1 << 8);
 }
 
 int Scanner_TypeChanged(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
@@ -1097,19 +1098,23 @@ void SetupScannerConfig()
 		}
 
 		// JOY_EVENT_STEER
-		if (i == JOY_EVENT_STEER)
+		if ((i == JOY_EVENT_STEER) || (i == JOY_EVENT_STEER_ANALOG))
 		{
-			if (inXInputConfigDef == XINPUT_GAMEPAD_DPAD_CONFIGDEF)
-				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_CombinedDigitalSteering;
-			else
-				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_CombinedSteering;
+			ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_CombinedSteering;
 		}
 	}
+
 	ScannerConfigs[JOY_EVENT_TYPE_CHANGED].ScannerFunctionPointer = (unsigned int)&Scanner_TypeChanged;
 #ifdef GAME_UG2
 	ScannerConfigs[JOY_EVENT_LIVE_TYPE_CHANGED].ScannerFunctionPointer = (unsigned int)&Scanner_TypeChanged;
 #endif
 	//ScannerConfigs[JOY_EVENT_ANY].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalAnyButton;
+
+	// read steering axis & buttons
+	SteerLeftButton = ConvertXInputNameToBitmask(inireader.ReadString("Events", "SteerLeftButton", ""));
+	SteerRightButton = ConvertXInputNameToBitmask(inireader.ReadString("Events", "SteerRightButton", ""));
+	SteerLeftAxis = ConvertXInputOtherConfigDef(inireader.ReadString("Events", "SteerLeftAxis", "XINPUT_GAMEPAD_LS_LEFT"));
+	SteerRightAxis = ConvertXInputOtherConfigDef(inireader.ReadString("Events", "SteerRightAxis", "XINPUT_GAMEPAD_LS_RIGHT"));
 
 	// read steering VK codes
 	SteerLeftVKey = ConvertVKNameToValue(inireader.ReadString("EventsKB", "KeyboardSteerLeft", "VK_LEFT"));
@@ -1118,7 +1123,7 @@ void SetupScannerConfig()
 		// try checking for single-char
 		char lettercheck[32];
 		strcpy(lettercheck, inireader.ReadString("EventsKB", "KeyboardSteerLeft", "VK_LEFT"));
-			if (strlen(lettercheck) == 1)
+			if (lettercheck[1] == '\0')
 				SteerLeftVKey = toupper(lettercheck[0]);
 	}
 	SteerRightVKey = ConvertVKNameToValue(inireader.ReadString("EventsKB", "KeyboardSteerRight", "VK_RIGHT"));
@@ -1127,7 +1132,7 @@ void SetupScannerConfig()
 		// try checking for single-char
 		char lettercheck[32];
 		strcpy(lettercheck, inireader.ReadString("EventsKB", "KeyboardSteerRight", "VK_RIGHT"));
-		if (strlen(lettercheck) == 1)
+		if (lettercheck[1] == '\0')
 			SteerRightVKey = toupper(lettercheck[0]);
 	}
 }
@@ -1332,6 +1337,10 @@ int Init()
 	// disable PC_CURSOR texture to avoid duplicate cursors
 	injector::WriteMemory<unsigned int>(0x0050B4EA, 0, true);
 #endif
+
+	// custom steering handler
+	injector::WriteMemory<unsigned int>(STEER_HANDLER_ADDR1, (int)&RealDriver_JoyHandler_Steer, true);
+	injector::WriteMemory<unsigned int>(STEER_HANDLER_ADDR2, (int)&DummyFunc, true);
 
 	// kill DInput8 joypad reading & event generation
 	injector::MakeJMP(EVENTGEN_JMP_ADDR_ENTRY, EVENTGEN_JMP_ADDR_EXIT, true);
