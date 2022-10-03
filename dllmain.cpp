@@ -30,6 +30,7 @@
 #include "NFSU_EventNames.h"
 #include "NFSU_XtendedInput_FEng.h"
 #include "NFSU_Addresses.h"
+#include <timeapi.h>
 #endif
 
 #ifdef GAME_UG2
@@ -94,8 +95,8 @@ struct ScannerConfig
 	unsigned int unk1; // not read
 	unsigned int JoyEvent;
 	unsigned int ScannerFunctionPointer;
-	short int BitmaskStuff; // used to define which bits are read from the joypad buffer
-	short int BitmaskStuff2; // used to define which bits are read from the joypad buffer
+	uint16_t BitmaskStuff; // used to define which bits are read from the joypad buffer
+	uint16_t BitmaskStuff2; // used to define which bits are read from the joypad buffer
 	unsigned int unk5; // if prev value was 0x10000 = button texture hash, if 0x10001 = max value, hard to determine
 	unsigned int param;
 	unsigned int keycode; // normally unknown, we're reutilizing this value
@@ -278,6 +279,109 @@ ScannerConfig* FindScannerConfig_Custom(unsigned int inJoyEvent, int confignum, 
 
 	return 0;
 }
+#endif
+
+#ifdef GAME_UG
+struct ActualJoypadData
+{
+	uint32_t destructor;
+	char unkdata1[0x130];
+	uint32_t type;
+	char name[32];
+	char unkdata2[0xE4];
+	uint32_t config_index;
+	uint32_t secondary;
+	char unkdata3[0x2C];
+}settings_controllers[3];
+
+int settings_cave1_exit = 0x00413C1D;
+int settings_cave1_exit_2 = 0x413AF1;
+void __declspec(naked) settings_cave1()
+{
+	_asm
+	{
+		cmp edx, 2
+		mov [esp+0x18], ebx
+		mov [esp+0x1C], eax
+		jnz settings_cont
+		jmp settings_cave1_exit
+
+		settings_cont:
+		jmp settings_cave1_exit_2;
+	}
+}
+
+uint32_t cur_setting_idx;
+uint32_t cur_setting_idx_secondary;
+
+// entry: 0x004141DF
+int settings_cave2_exit = 0x00414217;
+void __declspec(naked) settings_cave2()
+{
+	_asm
+	{
+		mov [esi+0x84], eax
+		mov eax, ds:0x736344
+		mov byte ptr [esi+0x80], 1
+		mov cur_setting_idx, ecx
+		mov cur_setting_idx_secondary, edx
+		jmp settings_cave2_exit
+	}
+}
+
+// entry: 0x004144EC
+int settings_cave3_exit = 0x00414507;
+void __declspec(naked) settings_cave3()
+{
+	_asm
+	{
+		//mov eax, ds:0x736344
+		mov esi, cur_setting_idx
+		jmp settings_cave3_exit
+	}
+}
+
+#pragma runtime_checks( "", off )
+// joy config menu
+// entrypoint: 0x00414830
+uint32_t JoyConfigValue = 0;
+
+
+void __stdcall SetConfigButtonText(int JoyMapIndex, int Secondary)
+{
+	unsigned int ObjHash = 0;
+	_asm mov ObjHash, ecx
+
+	char* FEngPkgName = "PC_JoyPad_Config.fng";
+	if (*(int*)CONFIG_JOY_INDEX_ADDR == 0)
+		FEngPkgName = "PC_Keyboard_Config.fng";
+
+	if ((JoyMapIndex == 3) || (JoyMapIndex == 4))
+	{
+		if (JoyMapIndex == 3)
+		{
+			if (Secondary == 0)
+				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(SteerLeftAxis));
+			else
+				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(SteerLeftButton));
+		}
+		if (JoyMapIndex == 4)
+		{
+			if (Secondary == 0)
+				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(SteerRightAxis));
+			else
+				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(SteerRightButton));
+		}
+	}
+	else
+	{
+		if (Secondary == 0)
+			FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(ScannerConfigs[MapJoypadConfigToEvent(JoyMapIndex)].BitmaskStuff));
+		else
+			FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(ScannerConfigs[MapSecondaryJoypadConfigToEvent(JoyMapIndex)].BitmaskStuff));
+	}
+}
+#pragma runtime_checks( "", restore )
 #endif
 
 int bStringHash(char* a1)
@@ -1086,6 +1190,7 @@ void SetupScannerConfig()
 		else
 		{
 			// triggers or sticks or dpad
+			ScannerConfigs[i].BitmaskStuff = inXInputConfigDef;
 			ScannerConfigs[i].BitmaskStuff2 = inXInputConfigDef;
 
 			if (bIsEventAnalog(i))
@@ -1144,7 +1249,7 @@ void SetupScannerConfig()
 void InitCustomKBInput()
 {
 	InitJoystick();
-	*(int*)JOYSTICK_P1_CONNECTION_STATUS_ADDR = 1; // without this, game doesn't want to read anything
+	*(int*)DEVICE_COUNT_ADDR = 2; // without this, game doesn't want to read anything
 
 	if (KeyboardReadingMode == KB_READINGMODE_UNBUFFERED_RAW)
 	{
@@ -1274,6 +1379,46 @@ void ReadXInput_Extra()
 	}
 }
 
+#ifdef GAME_UG
+
+#define CONFIG_BINDING_DELAY 500
+
+uint32_t BindAcceptTimeBase;
+uint32_t BindAllowTime;
+uint32_t OldSettingIdx;
+void HandleInGameConfigMenu()
+{
+	if (OldSettingIdx != cur_setting_idx)
+	{
+		BindAcceptTimeBase = timeGetTime();
+		BindAllowTime = BindAcceptTimeBase + CONFIG_BINDING_DELAY;
+		OldSettingIdx = cur_setting_idx;
+	}
+
+	if (cur_setting_idx)
+	{
+		WORD wButtons = g_Controllers[0].state.Gamepad.wButtons;
+		
+		// we want to delay the button reads for just a bit so we don't end up accidentally binding buttons
+		if (timeGetTime() > BindAllowTime)
+		{
+			// gamepad config
+			if (wButtons)
+			{
+				// detect which button is pressed
+				
+				// TODO: map ingame setting indicies to events!
+
+				// once done, set setting index to 0 to let the game know we're done
+				cur_setting_idx = 0;
+			}
+
+			// TODO: keyboard config
+		}
+	}
+}
+#endif
+
 void __stdcall ReadControllerData()
 {
 	MSG outMSG;
@@ -1281,6 +1426,9 @@ void __stdcall ReadControllerData()
 	ReadXInput_Extra();
 	if (KeyboardReadingMode == KB_READINGMODE_BUFFERED)
 		GetKeyboardState(VKeyStates[0]);
+#ifdef GAME_UG
+	HandleInGameConfigMenu();
+#endif
 }
 
 void InitConfig()
@@ -1322,7 +1470,23 @@ int Init()
 	*(int*)0x00704140 = MAX_JOY_EVENT;
 
 	// hook for OptionsSelectorMenu::NotificationMessage to disable controller options (for now)
-	injector::WriteMemory<unsigned int>(OPTIONSSELECTOR_VTABLE_FUNC_ADDR, (unsigned int)&OptionsSelectorMenu_NotificationMessage_Hook, true);
+	//injector::WriteMemory<unsigned int>(OPTIONSSELECTOR_VTABLE_FUNC_ADDR, (unsigned int)&OptionsSelectorMenu_NotificationMessage_Hook, true);
+	settings_controllers[0].type = 0x13;
+	settings_controllers[1].type = 0x15;
+	injector::WriteMemory<int>(0x00413ADD, (int)(&settings_controllers[0].type), true);
+	injector::MakeJMP(0x00413C0A, settings_cave1, true);
+
+	injector::MakeJMP(0x004141DF, settings_cave2, true);
+	injector::MakeJMP(0x004144EC, settings_cave3, true);
+
+	// disable writing to the device counter
+	injector::MakeNOP(0x00405BE8, 6, true);
+	injector::MakeNOP(0x00405D2F, 6, true);
+	injector::MakeNOP(0x00406463, 5, true);
+	injector::MakeNOP(0x0040648F, 5, true);
+	injector::MakeNOP(0x004064BB, 5, true);
+
+	injector::MakeJMP(0x00414830, SetConfigButtonText, true);
 
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR2, ReadControllerData, true);
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR3, ReadControllerData, true);

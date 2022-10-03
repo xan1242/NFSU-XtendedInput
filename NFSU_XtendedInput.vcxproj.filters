@@ -15,6 +15,7 @@
     <ClInclude Include="stdafx.h" />
     <ClInclude Include="targetver.h" />
     <ClInclude Include="NFSU2_FEng.h" />
+    <ClInclude Include="NFSU2_EventNames.h" />
   </ItemGroup>
   <ItemGroup>
     <None Include="README.md" />

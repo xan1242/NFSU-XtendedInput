@@ -21,21 +21,21 @@ int bStringHash(char* a1);
 #define XINPUT_GAMEPAD_Y                0x8000
 
 // other gamepad stuff -- sticks & triggers
-#define XINPUT_GAMEPAD_LT_CONFIGDEF 1
-#define XINPUT_GAMEPAD_RT_CONFIGDEF 2
-#define XINPUT_GAMEPAD_LS_X_CONFIGDEF 3
-#define XINPUT_GAMEPAD_LS_Y_CONFIGDEF 4
-#define XINPUT_GAMEPAD_RS_X_CONFIGDEF 5
-#define XINPUT_GAMEPAD_RS_Y_CONFIGDEF 6
-#define XINPUT_GAMEPAD_DPAD_CONFIGDEF 7
-#define XINPUT_GAMEPAD_LS_UP_CONFIGDEF 8
-#define XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF 9
-#define XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF 10
-#define XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF 11
-#define XINPUT_GAMEPAD_RS_UP_CONFIGDEF 12
-#define XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF 13
-#define XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF 14
-#define XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF 15
+#define XINPUT_GAMEPAD_LT_CONFIGDEF			0xABC0
+#define XINPUT_GAMEPAD_RT_CONFIGDEF			0xABC1
+#define XINPUT_GAMEPAD_LS_X_CONFIGDEF		0xABC2
+#define XINPUT_GAMEPAD_LS_Y_CONFIGDEF		0xABC3
+#define XINPUT_GAMEPAD_RS_X_CONFIGDEF		0xABC4
+#define XINPUT_GAMEPAD_RS_Y_CONFIGDEF		0xABC5
+#define XINPUT_GAMEPAD_LS_UP_CONFIGDEF		0xABC7
+#define XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF	0xABC8
+#define XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF	0xABC9
+#define XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF	0xABCA
+#define XINPUT_GAMEPAD_RS_UP_CONFIGDEF		0xABCB
+#define XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF	0xABCC
+#define XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF	0xABCD
+#define XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF	0xABCE
+#define XINPUT_GAMEPAD_DPAD_CONFIGDEF		0xDAD0
 
 // comparing strings by hash
 #define XINPUT_GAMEPAD_DPAD_UP_HASH         0xE4BBAB51 
@@ -150,4 +150,76 @@ int ConvertXInputOtherConfigDef(char* InName)
 	return 0;
 }
 
+char* ControlsTextsXBOX[] = { "A", "B", "X", "Y", "LB", "RB", "View (Select)", "Menu (Start)", "Left stick", "Right stick", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right", "Right stick X", "Right stick Y", "Right stick Left", "Right stick Right" ,"Right stick Up", "Right stick Down", "Left stick X", "Left stick Y", "Left stick Left", "Left stick Right", "Left stick Up", "Left stick Down", "LT", "RT"};
+//const char* ControlsTextsPS[] = { "Cross", "Circle", "Square", "Triangle", "L1", "R1", "Select", "Start", "L3", "R3", "D-pad Up", "D-pad Down", "D-pad Left", "D-pad Right", "Right stick Left/Right", "Right stick Up/Down", "Left stick Left/Right", "Left stick Up/Down", "L2 / R2", "D-pad" };
+
+char* unkstr = "Unknown";
+
+char* __stdcall ConvertBitmaskToString_XBOX(uint16_t in)
+{
+	switch (in)
+	{
+	case XINPUT_GAMEPAD_DPAD_UP:
+		return ControlsTextsXBOX[10];
+	case XINPUT_GAMEPAD_DPAD_DOWN:
+		return ControlsTextsXBOX[11];
+	case XINPUT_GAMEPAD_DPAD_LEFT:
+		return ControlsTextsXBOX[12];
+	case XINPUT_GAMEPAD_DPAD_RIGHT:
+		return ControlsTextsXBOX[13];
+	case XINPUT_GAMEPAD_START:
+		return ControlsTextsXBOX[7];
+	case XINPUT_GAMEPAD_BACK:
+		return ControlsTextsXBOX[6];
+	case XINPUT_GAMEPAD_LEFT_THUMB:
+		return ControlsTextsXBOX[8];
+	case XINPUT_GAMEPAD_RIGHT_THUMB:
+		return ControlsTextsXBOX[9];
+	case XINPUT_GAMEPAD_LEFT_SHOULDER:
+		return ControlsTextsXBOX[4];
+	case XINPUT_GAMEPAD_RIGHT_SHOULDER:
+		return ControlsTextsXBOX[5];
+	case XINPUT_GAMEPAD_A:
+		return ControlsTextsXBOX[0];
+	case XINPUT_GAMEPAD_B:
+		return ControlsTextsXBOX[1];
+	case XINPUT_GAMEPAD_X:
+		return ControlsTextsXBOX[2];
+	case XINPUT_GAMEPAD_Y:
+		return ControlsTextsXBOX[3];
+
+	case XINPUT_GAMEPAD_LT_CONFIGDEF:
+		return ControlsTextsXBOX[27];
+	case XINPUT_GAMEPAD_RT_CONFIGDEF:
+		return ControlsTextsXBOX[26];
+	case XINPUT_GAMEPAD_LS_X_CONFIGDEF:
+		return ControlsTextsXBOX[20];
+	case XINPUT_GAMEPAD_LS_Y_CONFIGDEF:
+		return ControlsTextsXBOX[21];
+	case XINPUT_GAMEPAD_RS_X_CONFIGDEF:
+		return ControlsTextsXBOX[14];
+	case XINPUT_GAMEPAD_RS_Y_CONFIGDEF:
+		return ControlsTextsXBOX[15];
+	case XINPUT_GAMEPAD_LS_UP_CONFIGDEF:
+		return ControlsTextsXBOX[24];
+	case XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF:
+		return ControlsTextsXBOX[25];
+	case XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF:
+		return ControlsTextsXBOX[22];
+	case XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF:
+		return ControlsTextsXBOX[23];
+	case XINPUT_GAMEPAD_RS_UP_CONFIGDEF:
+		return ControlsTextsXBOX[18];
+	case XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF:
+		return ControlsTextsXBOX[19];
+	case XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF:
+		return ControlsTextsXBOX[16];
+	case XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF:
+		return ControlsTextsXBOX[17];
+
+	default:
+		break;
+	}
+	return unkstr;
+}
 

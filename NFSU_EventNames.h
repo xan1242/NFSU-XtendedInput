@@ -904,3 +904,88 @@ bool bIsEventAnalog(unsigned int joyevent)
 		joyevent == JOY_EVENT_CARSEL_ORBIT_UPDOWN ||
 		joyevent == JOY_EVENT_CARSEL_ORBIT_LEFTRIGHT;
 }
+
+// for reference, the joypad config menu:
+// 3 -- steer left
+// 4 -- steer right
+// 1 -- throttle
+// 2 -- brake
+// 5 -- ebrake
+// 6 -- nos
+// 7 -- shift up
+// 8 -- shift down
+// 9 -- look back
+// 10 -- camera
+// 14 -- reset
+// 12 -- pause
+
+int MapJoypadConfigToEvent(int in)
+{
+	switch (in)
+	{
+	case 1:
+		return JOY_EVENT_THROTTLE_ANALOG;
+	case 2:
+		return JOY_EVENT_BRAKE_ANALOG;
+	case 5:
+		return JOY_EVENT_EBRAKE;
+	case 6:
+		return JOY_EVENT_NITRO_BOOST;
+	case 7:
+		return JOY_EVENT_SHIFTUP;
+	case 8:
+		return JOY_EVENT_SHIFTDOWN;
+	case 9:
+		return JOY_EVENT_CAMERA_LOOKBACK;
+	case 10:
+		return JOY_EVENT_CAMERA_POV_CHANGE;
+	case 12:
+		return JOY_EVENT_PAUSE;
+	case 14:
+		return JOY_EVENT_RESET_CAR;
+	default:
+		return 0;
+	}
+}
+
+int MapSecondaryJoypadConfigToEvent(int in)
+{
+	switch (in)
+	{
+	case 1:
+		return JOY_EVENT_THROTTLE;
+	case 2:
+		return JOY_EVENT_BRAKE;
+	default:
+		return 0;
+	}
+}
+
+int MapKeyboardConfigToEvent(int in)
+{
+	switch (in)
+	{
+	case 1:
+		return JOY_EVENT_THROTTLE;
+	case 2:
+		return JOY_EVENT_BRAKE;
+	case 5:
+		return JOY_EVENT_EBRAKE;
+	case 6:
+		return JOY_EVENT_NITRO_BOOST;
+	case 7:
+		return JOY_EVENT_SHIFTUP;
+	case 8:
+		return JOY_EVENT_SHIFTDOWN;
+	case 9:
+		return JOY_EVENT_CAMERA_LOOKBACK;
+	case 10:
+		return JOY_EVENT_CAMERA_POV_CHANGE;
+	case 12:
+		return JOY_EVENT_PAUSE;
+	case 14:
+		return JOY_EVENT_RESET_CAR;
+	default:
+		return 0;
+	}
+}
