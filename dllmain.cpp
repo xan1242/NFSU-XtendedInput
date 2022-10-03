@@ -1060,117 +1060,107 @@ int Scanner_DigitalDownAnalog_XInput(void* EventNode, unsigned int* unk1, unsign
 			if (g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD)
 			{
 				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	case XINPUT_GAMEPAD_RT_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD) != EventStates[ci][inScannerConfig->JoyEvent])
 		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD);
 			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
 			if (g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD)
 			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	case XINPUT_GAMEPAD_LS_UP_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.sThumbLY > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
 		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY > threshold);
 			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
 			if (g_Controllers[ci].state.Gamepad.sThumbLY > threshold)
 			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY > threshold);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	case XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.sThumbLY < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
 		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY < -threshold);
 			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
 			if (g_Controllers[ci].state.Gamepad.sThumbLY < -threshold)
 			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY < -threshold);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	case XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.sThumbLX < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
 		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX < -threshold);
 			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
 			if (g_Controllers[ci].state.Gamepad.sThumbLX < -threshold)
 			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX < -threshold);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	case XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.sThumbLX > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
 		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX > threshold);
 			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
 			if (g_Controllers[ci].state.Gamepad.sThumbLX > threshold)
 			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX > threshold);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	case XINPUT_GAMEPAD_RS_UP_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.sThumbRY > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
 		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY > threshold);
 			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
 			if (g_Controllers[ci].state.Gamepad.sThumbRY > threshold)
 			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY > threshold);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	case XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.sThumbRY < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
 		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY < -threshold);
 			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
 			if (g_Controllers[ci].state.Gamepad.sThumbRY < -threshold)
 			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY < -threshold);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	case XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.sThumbRX < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
 		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX < -threshold);
 			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
 			if (g_Controllers[ci].state.Gamepad.sThumbRX < -threshold)
 			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX < -threshold);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	case XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.sThumbRX > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
 		{
+			EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX > threshold);
 			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
 			if (g_Controllers[ci].state.Gamepad.sThumbRX > threshold)
 			{
-				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX > threshold);
-				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+				return inScannerConfig->JoyEvent;
 			}
-			return 0;
 		}
 		break;
 	}
@@ -1931,9 +1921,9 @@ void HandleInGameConfigMenu()
 						{
 							ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = act;
 							if (bIsEventDigitalDownOnly(MapJoypadConfigToEvent(cur_setting_idx)))
-								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalAnalog;
-							else
 								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalDownAnalog;
+							else
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalAnalog;
 							SaveBindingToIni(MapJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
 						}
 						cur_setting_idx = 0;
