@@ -768,9 +768,9 @@ char* __stdcall ConvertBitmaskToControlString_XBOX(uint16_t in)
 	case XINPUT_GAMEPAD_Y:
 		return ControlsTextsXBOX[3];
 	case XINPUT_GAMEPAD_LT_CONFIGDEF:
-		return ControlsTextsXBOX[27];
-	case XINPUT_GAMEPAD_RT_CONFIGDEF:
 		return ControlsTextsXBOX[26];
+	case XINPUT_GAMEPAD_RT_CONFIGDEF:
+		return ControlsTextsXBOX[27];
 	case XINPUT_GAMEPAD_LS_X_CONFIGDEF:
 		return ControlsTextsXBOX[20];
 	case XINPUT_GAMEPAD_LS_Y_CONFIGDEF:
@@ -835,9 +835,9 @@ char* __stdcall ConvertBitmaskToControlString_PS(uint16_t in)
 	case XINPUT_GAMEPAD_Y:
 		return ControlsTextsPS[3];
 	case XINPUT_GAMEPAD_LT_CONFIGDEF:
-		return ControlsTextsPS[27];
-	case XINPUT_GAMEPAD_RT_CONFIGDEF:
 		return ControlsTextsPS[26];
+	case XINPUT_GAMEPAD_RT_CONFIGDEF:
+		return ControlsTextsPS[27];
 	case XINPUT_GAMEPAD_LS_X_CONFIGDEF:
 		return ControlsTextsPS[20];
 	case XINPUT_GAMEPAD_LS_Y_CONFIGDEF:
