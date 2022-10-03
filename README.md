@@ -26,6 +26,21 @@ For the newer NFS titles by Black Box, check out [NFS_XtendedInput](https://gith
 
 You may remap the buttons in the configuration file (NFSU_XtendedInput.ini), however as of now there is 1 limitation: you may only assign 1 button to an event. Refer to the EventReference.txt file to see what's available.
 
+### About in-game controller settings menu (UG1 only)
+
+You can also remap the buttons via the in-game settings menu. Keep in mind that you'll only be able to remap the buttons visible in that menu (you will not be able to remap FE events).
+
+It does NOT block duplicate mappings, so you *can bind multiple actions to 1 button*.
+
+For keyboards: only the Primary map is bindable and supported. This is subject to change in the future when secondary maps become possible.
+
+For controllers: you may also bind only Primary maps, except for: Steering, Throttle and Brake. Secondary maps for those actions are their digital counterparts exclusively, so they will only respond to buttons. Primary maps for those actions are exclusively analog, so they will only map to analog axis.
+
+To unbind any button: activate an action for rebinding and then press F5. As F5 is the "unbind" button, it is not bindable via the game unto itself. If you wish to bind it, you must edit the configuration file manually.
+
+Any changes made in this menu will be saved to the configuration file.
+
+
 Default controller button mappings are:
 
 ### Ingame

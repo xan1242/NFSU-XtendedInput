@@ -10,6 +10,8 @@
 // TODO (UG 1/2): properly restore console FrontEnd objects (help messages, controller icons) -- partially done, HELP menu still needs to be restored
 // TODO (UG): reassigned button textures -- so when you set Y button for BUTTON1 in FE, it should draw Y and not keep drawing X
 // TODO (UG2): maybe button hash assignments and FE stuff
+// TODO (UG2): ingame settings menu
+// TODO (UG): maybe rewrite the drag steering handler, DPad input for steering is currently not possible with the analog steering at the same time!
 
 #include "stdafx.h"
 #include "stdio.h"
@@ -342,10 +344,9 @@ void __declspec(naked) settings_cave3()
 }
 
 #pragma runtime_checks( "", off )
+#define JOYCONFIG_EMPTYSTR "Not bindable"
 // joy config menu
 // entrypoint: 0x00414830
-uint32_t JoyConfigValue = 0;
-
 
 void __stdcall SetConfigButtonText(int JoyMapIndex, int Secondary)
 {
@@ -356,29 +357,76 @@ void __stdcall SetConfigButtonText(int JoyMapIndex, int Secondary)
 	if (*(int*)CONFIG_JOY_INDEX_ADDR == 0)
 		FEngPkgName = "PC_Keyboard_Config.fng";
 
-	if ((JoyMapIndex == 3) || (JoyMapIndex == 4))
+	if (*(int*)CONFIG_JOY_INDEX_ADDR == 0)
 	{
-		if (JoyMapIndex == 3)
+		// Keyboard config
+
+		if ((JoyMapIndex == 3) || (JoyMapIndex == 4))
 		{
-			if (Secondary == 0)
-				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(SteerLeftAxis));
-			else
-				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(SteerLeftButton));
+			if (JoyMapIndex == 3)
+			{
+				if (Secondary == 0)
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ControlsTextsPC[SteerLeftVKey]);
+				else
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), JOYCONFIG_EMPTYSTR);
+			}
+			if (JoyMapIndex == 4)
+			{
+				if (Secondary == 0)
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ControlsTextsPC[SteerRightVKey]);
+				else
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), JOYCONFIG_EMPTYSTR);
+			}
 		}
-		if (JoyMapIndex == 4)
+		else
 		{
 			if (Secondary == 0)
-				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(SteerRightAxis));
+				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ControlsTextsPC[ScannerConfigs[MapKeyboardConfigToEvent(JoyMapIndex)].keycode]);
 			else
-				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(SteerRightButton));
+				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), JOYCONFIG_EMPTYSTR);
 		}
 	}
 	else
 	{
-		if (Secondary == 0)
-			FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(ScannerConfigs[MapJoypadConfigToEvent(JoyMapIndex)].BitmaskStuff));
+		// JoyPad config
+		if ((JoyMapIndex >= 1) && (JoyMapIndex <= 4))
+		{
+			if (JoyMapIndex == 1)
+			{
+				if (Secondary == 0)
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToControlString(ControllerIconMode, ScannerConfigs[MapJoypadConfigToEvent(JoyMapIndex)].BitmaskStuff));
+				else
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToControlString(ControllerIconMode, ScannerConfigs[MapSecondaryJoypadConfigToEvent(JoyMapIndex)].BitmaskStuff));
+			}
+			if (JoyMapIndex == 2)
+			{
+				if (Secondary == 0)
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToControlString(ControllerIconMode, ScannerConfigs[MapJoypadConfigToEvent(JoyMapIndex)].BitmaskStuff));
+				else
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToControlString(ControllerIconMode, ScannerConfigs[MapSecondaryJoypadConfigToEvent(JoyMapIndex)].BitmaskStuff));
+			}
+			if (JoyMapIndex == 3)
+			{
+				if (Secondary == 0)
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToControlString(ControllerIconMode, SteerLeftAxis));
+				else
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToControlString(ControllerIconMode, SteerLeftButton));
+			}
+			if (JoyMapIndex == 4)
+			{
+				if (Secondary == 0)
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToControlString(ControllerIconMode, SteerRightAxis));
+				else
+					FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToControlString(ControllerIconMode, SteerRightButton));
+			}
+		}
 		else
-			FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToString_XBOX(ScannerConfigs[MapSecondaryJoypadConfigToEvent(JoyMapIndex)].BitmaskStuff));
+		{
+			if (Secondary == 0)
+				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), ConvertBitmaskToControlString(ControllerIconMode, ScannerConfigs[MapJoypadConfigToEvent(JoyMapIndex)].BitmaskStuff));
+			else
+				FEPrintf((void*)FEngFindString(FEngPkgName, ObjHash), JOYCONFIG_EMPTYSTR);
+		}
 	}
 }
 #pragma runtime_checks( "", restore )
@@ -399,6 +447,99 @@ int bStringHash(char* a1)
 	}
 	return result;
 }
+
+bool bIsAnyAnalogActive()
+{
+	return (g_Controllers[0].state.Gamepad.sThumbLX || g_Controllers[0].state.Gamepad.sThumbLY || g_Controllers[0].state.Gamepad.sThumbRX || g_Controllers[0].state.Gamepad.sThumbRY || g_Controllers[0].state.Gamepad.bRightTrigger || g_Controllers[0].state.Gamepad.bLeftTrigger);
+}
+
+float GetAnalogStickValue(int index, WORD bind)
+{
+	float result = 0.0f;
+	int rdi = index;
+	switch (bind)
+	{
+	case XINPUT_GAMEPAD_LT_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.bLeftTrigger / 255.0f;
+		break;
+	case XINPUT_GAMEPAD_RT_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.bRightTrigger / 255.0f;
+		break;
+	case XINPUT_GAMEPAD_LS_X_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.sThumbLX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_X_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.sThumbRX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_Y_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.sThumbLY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_Y_CONFIGDEF:
+		result = g_Controllers[rdi].state.Gamepad.sThumbRY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_UP_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbLY > 0)
+			result = g_Controllers[rdi].state.Gamepad.sThumbLY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbLY < 0)
+			result = -g_Controllers[rdi].state.Gamepad.sThumbLY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbLX < 0)
+			result = -g_Controllers[rdi].state.Gamepad.sThumbLX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbLX > 0)
+			result = g_Controllers[rdi].state.Gamepad.sThumbLX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_UP_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbRY > 0)
+			result = g_Controllers[rdi].state.Gamepad.sThumbRY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbRY < 0)
+			result = -g_Controllers[rdi].state.Gamepad.sThumbRY / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbRX < 0)
+			result = -g_Controllers[rdi].state.Gamepad.sThumbRX / (float)(0x7FFF);
+		break;
+	case XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF:
+		if (g_Controllers[rdi].state.Gamepad.sThumbRX > 0)
+			result = g_Controllers[rdi].state.Gamepad.sThumbRX / (float)(0x7FFF);
+		break;
+	default:
+		break;
+	}
+	return result;
+}
+
+uint16_t GetAnalogActivity()
+{
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_LT_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_LT_CONFIGDEF;
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_RT_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_RT_CONFIGDEF;
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_LS_UP_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_LS_UP_CONFIGDEF;
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF;
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF;
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF;
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_RS_UP_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_RS_UP_CONFIGDEF;
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF;
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF;
+	if (GetAnalogStickValue(0, XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF) >= 1.0f)
+		return XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF;
+	return 0;
+}
+
 
 
 //////////////////////////////////////////////////////////////////
@@ -712,7 +853,7 @@ int Scanner_DigitalAnalog_XInput(void* EventNode, unsigned int* unk1, unsigned i
 		threshold = SHIFT_ANALOG_THRESHOLD;
 
 	// we're using BitmaskStuff to define which button is actually pressed
-	switch (inScannerConfig->BitmaskStuff2)
+	switch (inScannerConfig->BitmaskStuff)
 	{
 	case XINPUT_GAMEPAD_LT_CONFIGDEF:
 		if ((g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD) != EventStates[ci][inScannerConfig->JoyEvent])
@@ -899,9 +1040,153 @@ int Scanner_DigitalAnalog_XInput(void* EventNode, unsigned int* unk1, unsigned i
 	return 0;
 }
 
+int Scanner_DigitalDownAnalog_XInput(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	int ci = 0;
+	if ((int)Joystick == JOY2_ADDR)
+		ci = 1;
+
+	WORD threshold = FEUPDOWN_ANALOG_THRESHOLD;
+	if (inScannerConfig->JoyEvent == JOY_EVENT_SHIFTUP || inScannerConfig->JoyEvent == JOY_EVENT_SHIFTDOWN || inScannerConfig->JoyEvent == JOY_EVENT_SHIFTUP_ALTERNATE || inScannerConfig->JoyEvent == JOY_EVENT_SHIFTDOWN_ALTERNATE)
+		threshold = SHIFT_ANALOG_THRESHOLD;
+
+	// we're using BitmaskStuff to define which button is actually pressed
+	switch (inScannerConfig->BitmaskStuff)
+	{
+	case XINPUT_GAMEPAD_LT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.bLeftTrigger > TRIGGER_ACTIVATION_THRESHOLD);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.bRightTrigger > TRIGGER_ACTIVATION_THRESHOLD);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_LS_UP_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbLY > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbLY > threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY > threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbLY < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbLY < -threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLY < -threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbLX < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbLX < -threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX < -threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbLX > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbLX > threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbLX > threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RS_UP_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbRY > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbRY > threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY > threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbRY < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbRY < -threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRY < -threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbRX < -threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbRX < -threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX < -threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	case XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF:
+		if ((g_Controllers[ci].state.Gamepad.sThumbRX > threshold) != EventStates[ci][inScannerConfig->JoyEvent])
+		{
+			// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
+			if (g_Controllers[ci].state.Gamepad.sThumbRX > threshold)
+			{
+				EventStates[ci][inScannerConfig->JoyEvent] = (g_Controllers[ci].state.Gamepad.sThumbRX > threshold);
+				return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
+			}
+			return 0;
+		}
+		break;
+	}
+	// otherwise just keep returning zero, we're only returning changes
+	return 0;
+}
+
+
 int Scanner_DigitalAnalog(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
 	return Scanner_DigitalAnalog_XInput(EventNode, unk1, unk2, inScannerConfig, Joystick) | Scanner_DigitalUpOrDown_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
+}
+
+int Scanner_DigitalDownAnalog(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
+{
+	return Scanner_DigitalDownAnalog_XInput(EventNode, unk1, unk2, inScannerConfig, Joystick) | Scanner_DigitalDown_KB(EventNode, unk1, unk2, inScannerConfig, Joystick);
 }
 
 int Scanner_DigitalAnyButton(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
@@ -942,7 +1227,7 @@ int Scanner_Analog(void* EventNode, unsigned int* unk1, unsigned int unk2, Scann
 
 	BYTE axis = 0;
 
-	switch (inScannerConfig->BitmaskStuff2)
+	switch (inScannerConfig->BitmaskStuff)
 	{
 	case XINPUT_GAMEPAD_LT_CONFIGDEF:
 		axis = g_Controllers[ci].state.Gamepad.bLeftTrigger;
@@ -998,7 +1283,7 @@ int Scanner_Analog_DragSteer(void* EventNode, unsigned int* unk1, unsigned int u
 	BYTE axis = 0;
 	char signed_axis = 0;
 
-	switch (inScannerConfig->BitmaskStuff2)
+	switch (inScannerConfig->BitmaskStuff)
 	{
 	case XINPUT_GAMEPAD_LS_X_CONFIGDEF:
 		axis = (BYTE)(((float)(g_Controllers[ci].state.Gamepad.sThumbLX) / (float)(0x7FFF)) * (float)(0x7F));
@@ -1029,67 +1314,6 @@ int Scanner_Analog_DragSteer(void* EventNode, unsigned int* unk1, unsigned int u
 }
 
 // STEERING HANDLER
-float GetAnalogStickValue(int index, WORD bind)
-{
-	float result = 0.0f;
-	int rdi = index;
-	switch (bind)
-	{
-	case XINPUT_GAMEPAD_LT_CONFIGDEF:
-		result = g_Controllers[rdi].state.Gamepad.bLeftTrigger / 255.0f;
-		break;
-	case XINPUT_GAMEPAD_RT_CONFIGDEF:
-		result = g_Controllers[rdi].state.Gamepad.bRightTrigger / 255.0f;
-		break;
-	case XINPUT_GAMEPAD_LS_X_CONFIGDEF:
-		result = g_Controllers[rdi].state.Gamepad.sThumbLX / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_RS_X_CONFIGDEF:
-		result = g_Controllers[rdi].state.Gamepad.sThumbRX / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_LS_Y_CONFIGDEF:
-		result = g_Controllers[rdi].state.Gamepad.sThumbLY / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_RS_Y_CONFIGDEF:
-		result = g_Controllers[rdi].state.Gamepad.sThumbRY / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_LS_UP_CONFIGDEF:
-		if (g_Controllers[rdi].state.Gamepad.sThumbLY > 0)
-			result = g_Controllers[rdi].state.Gamepad.sThumbLY / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_LS_DOWN_CONFIGDEF:
-		if (g_Controllers[rdi].state.Gamepad.sThumbLY < 0)
-			result = -g_Controllers[rdi].state.Gamepad.sThumbLY / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_LS_LEFT_CONFIGDEF:
-		if (g_Controllers[rdi].state.Gamepad.sThumbLX < 0)
-			result = -g_Controllers[rdi].state.Gamepad.sThumbLX / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_LS_RIGHT_CONFIGDEF:
-		if (g_Controllers[rdi].state.Gamepad.sThumbLX > 0)
-			result = g_Controllers[rdi].state.Gamepad.sThumbLX / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_RS_UP_CONFIGDEF:
-		if (g_Controllers[rdi].state.Gamepad.sThumbRY > 0)
-			result = g_Controllers[rdi].state.Gamepad.sThumbRY / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_RS_DOWN_CONFIGDEF:
-		if (g_Controllers[rdi].state.Gamepad.sThumbRY < 0)
-			result = -g_Controllers[rdi].state.Gamepad.sThumbRY / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_RS_LEFT_CONFIGDEF:
-		if (g_Controllers[rdi].state.Gamepad.sThumbRX < 0)
-			result = -g_Controllers[rdi].state.Gamepad.sThumbRX / (float)(0x7FFF);
-		break;
-	case XINPUT_GAMEPAD_RS_RIGHT_CONFIGDEF:
-		if (g_Controllers[rdi].state.Gamepad.sThumbRX > 0)
-			result = g_Controllers[rdi].state.Gamepad.sThumbRX / (float)(0x7FFF);
-		break;
-	default:
-		break;
-	}
-	return result;
-}
 
 void RealDriver_JoyHandler_Steer(int JoystickPort, int JoyEvent, char Value, void* RealDriver)
 {
@@ -1191,12 +1415,17 @@ void SetupScannerConfig()
 		{
 			// triggers or sticks or dpad
 			ScannerConfigs[i].BitmaskStuff = inXInputConfigDef;
-			ScannerConfigs[i].BitmaskStuff2 = inXInputConfigDef;
+			//ScannerConfigs[i].BitmaskStuff2 = inXInputConfigDef;
 
 			if (bIsEventAnalog(i))
 				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_Analog;
 			else if ((inXInputConfigDef != XINPUT_GAMEPAD_DPAD_CONFIGDEF))
-				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalAnalog;
+			{
+				if (bIsEventDigitalDownOnly(i))
+					ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalDownAnalog;
+				else
+					ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalAnalog;
+			}
 			// this is horribly broken, drag analog steering goes across all lanes...
 			if ((i == JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT_ANALOG) || (i == JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT_ANALOG))
 				ScannerConfigs[i].ScannerFunctionPointer = (unsigned int)&Scanner_Analog_DragSteer;
@@ -1271,6 +1500,7 @@ HRESULT UpdateControllerState()
 	if (dwResult == ERROR_SUCCESS)
 	{
 		g_Controllers[0].bConnected = true;
+		*(int*)DEVICE_COUNT_ADDR = 2;
 
 		// Zero value if thumbsticks are within the dead zone 
 		if ((g_Controllers[0].state.Gamepad.sThumbLX < INPUT_DEADZONE_LS &&
@@ -1298,6 +1528,7 @@ HRESULT UpdateControllerState()
 	else
 	{
 		g_Controllers[0].bConnected = false;
+		*(int*)DEVICE_COUNT_ADDR = 1;
 	}
 
 	dwResult = XInputGetState(1, &g_Controllers[1].state);
@@ -1380,8 +1611,74 @@ void ReadXInput_Extra()
 }
 
 #ifdef GAME_UG
-
 #define CONFIG_BINDING_DELAY 500
+#define UNBINDER_KEY VK_F5
+
+bool bIgnorableVKey(int k)
+{
+	switch (k)
+	{
+	case VK_MENU:
+	case VK_CONTROL:
+	case VK_SHIFT:
+		return true;
+	default:
+		return false;
+	}
+
+	return false;
+}
+
+int KB_GetCurrentPressedKey()
+{
+	switch (KeyboardReadingMode)
+	{
+	case KB_READINGMODE_UNBUFFERED_RAW:
+	case KB_READINGMODE_BUFFERED:
+
+		for (int i = 0; i < 255; i++)
+		{
+			if (VKeyStates[0][i] >> 7)
+				if (!bIgnorableVKey(i)) // TODO: separate Left Control and Right Alt
+					return i;
+		}
+		return -1;
+	case KB_READINGMODE_UNBUFFERED_ASYNC:
+	default:
+
+		for (int i = 0; i < 255; i++)
+		{
+			if (GetAsyncKeyState(i) >> 15)
+				if (!bIgnorableVKey(i))
+					return i;
+		}
+		return -1;
+	}
+}
+
+void SaveBindingToIni(int JoyEvent, uint16_t bind)
+{
+	CIniReader inireader("");
+	inireader.WriteString("Events", JoyEventNames[JoyEvent], ConvertXInputBitmaskToName(bind));
+}
+
+void SaveSteerBindingToIni(char* name, uint16_t bind)
+{
+	CIniReader inireader("");
+	inireader.WriteString("Events", name, ConvertXInputBitmaskToName(bind));
+}
+
+void SaveBindingToIniKB(int JoyEvent, int bind)
+{
+	CIniReader inireader("");
+	inireader.WriteString("EventsKB", JoyEventNames[JoyEvent], VKeyStrings[bind]);
+}
+
+void SaveSteerBindingToIniKB(char* name, int bind)
+{
+	CIniReader inireader("");
+	inireader.WriteString("EventsKB", name, VKeyStrings[bind]);
+}
 
 uint32_t BindAcceptTimeBase;
 uint32_t BindAllowTime;
@@ -1402,18 +1699,263 @@ void HandleInGameConfigMenu()
 		// we want to delay the button reads for just a bit so we don't end up accidentally binding buttons
 		if (timeGetTime() > BindAllowTime)
 		{
-			// gamepad config
-			if (wButtons)
+			// keyboard config
+			if (*(int*)CONFIG_JOY_INDEX_ADDR == 0)
 			{
-				// detect which button is pressed
-				
-				// TODO: map ingame setting indicies to events!
+				int KBkey = KB_GetCurrentPressedKey();
+				if (KBkey != -1)
+				{
+					// REMOVE BINDING BY PRESSING A BUTTON ON KEYBOARD
+					if (KBkey == UNBINDER_KEY)
+					{
+						if ((cur_setting_idx == 3) || (cur_setting_idx == 4))
+						{
+							if (cur_setting_idx == 3)
+							{
+								if (cur_setting_idx_secondary == 0)
+								{
+									SteerLeftVKey = 0;
+									ScannerConfigs[JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT].keycode = SteerLeftVKey;
+									SaveSteerBindingToIniKB("KeyboardSteerLeft", SteerLeftVKey);
+									SaveBindingToIniKB(JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT, SteerLeftVKey);
+								}
+							}
+							if (cur_setting_idx == 4)
+							{
+								if (cur_setting_idx_secondary == 0)
+								{
+									SteerRightVKey = 0;
+									ScannerConfigs[JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT].keycode = SteerRightVKey;
+									SaveSteerBindingToIniKB("KeyboardSteerRight", SteerRightVKey);
+									SaveBindingToIniKB(JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT, SteerRightVKey);
+								}
+							}
+						}
+						else
+						{
+							ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].keycode = 0;
+							SaveBindingToIniKB(MapKeyboardConfigToEvent(cur_setting_idx), ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].keycode);
+						}
 
-				// once done, set setting index to 0 to let the game know we're done
-				cur_setting_idx = 0;
+						cur_setting_idx = 0;
+						return;
+					}
+
+					if ((cur_setting_idx == 3) || (cur_setting_idx == 4))
+					{
+						if (cur_setting_idx == 3)
+						{
+							if (cur_setting_idx_secondary == 0)
+							{
+								SteerLeftVKey = KBkey;
+								ScannerConfigs[JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT].keycode = SteerLeftVKey;
+								SaveSteerBindingToIniKB("KeyboardSteerLeft", SteerLeftVKey);
+								SaveBindingToIniKB(JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT, SteerLeftVKey);
+							}
+						}
+						if (cur_setting_idx == 4)
+						{
+							if (cur_setting_idx_secondary == 0)
+							{
+								SteerRightVKey = KBkey;
+								ScannerConfigs[JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT].keycode = SteerRightVKey;
+								SaveSteerBindingToIniKB("KeyboardSteerRight", SteerRightVKey);
+								SaveBindingToIniKB(JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT, SteerRightVKey);
+							}
+						}
+					}
+					else
+					{
+						if (cur_setting_idx_secondary == 0)
+						{
+							ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].keycode = KBkey;
+							if (bIsEventDigitalDownOnly(MapKeyboardConfigToEvent(cur_setting_idx)))
+								ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalDown;
+							else
+								ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalUpOrDown;
+							SaveBindingToIniKB(MapKeyboardConfigToEvent(cur_setting_idx), ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].keycode);
+						}
+					}
+					cur_setting_idx = 0;
+					return;
+				}
 			}
+			// JoyPad config
+			else
+			{
+				// REMOVE BINDING BY PRESSING A BUTTON ON KEYBOARD
+				if (KB_GetCurrentPressedKey() == UNBINDER_KEY)
+				{
+					if (((cur_setting_idx >= 1) && (cur_setting_idx <= 4)))
+					{
+						if ((cur_setting_idx_secondary == 0))
+						{
+							if ((cur_setting_idx == 1) || (cur_setting_idx == 2))
+							{
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = 0;
+								SaveBindingToIni(MapJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+							}
+							if (cur_setting_idx == 3)
+							{
+								SteerLeftAxis = 0;
+								ScannerConfigs[JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT].BitmaskStuff = SteerLeftAxis;
+								SaveSteerBindingToIni("SteerLeftAxis", SteerLeftAxis);
+								SaveBindingToIni(JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT, SteerLeftAxis);
+							}
+							if (cur_setting_idx == 4)
+							{
+								SteerRightAxis = 0;
+								ScannerConfigs[JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT].BitmaskStuff = SteerRightAxis;
+								SaveSteerBindingToIni("SteerRightAxis", SteerRightAxis);
+								SaveBindingToIni(JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT, SteerRightAxis);
+							}
+						}
+						else
+						{
+							if ((cur_setting_idx == 1) || (cur_setting_idx == 2))
+							{
+								ScannerConfigs[MapSecondaryJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = 0;
+								SaveBindingToIni(MapSecondaryJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapSecondaryJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+							}
+							if (cur_setting_idx == 3)
+							{
+								SteerLeftButton = 0;
+								// TODO: map drag steering to digital steering (or redo its entire handler)
+								SaveSteerBindingToIni("SteerLeftButton", SteerLeftButton);
+							}
+							if (cur_setting_idx == 4)
+							{
+								SteerRightButton = 0;
+								// TODO: map drag steering to digital steering (or redo its entire handler)
+								SaveSteerBindingToIni("SteerRightButton", SteerRightButton);
+							}
+						}
+					}
+					else
+					{
+						ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = 0;
+						SaveBindingToIni(MapJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+					}
+					cur_setting_idx = 0;
+					return;
+				}
 
-			// TODO: keyboard config
+				
+				if (((cur_setting_idx >= 1) && (cur_setting_idx <= 4)))
+				{
+					if ((cur_setting_idx_secondary == 0))
+					{
+						// analog ONLY bindings -- reads only the analog axis and nothing else!
+						uint16_t act = GetAnalogActivity();
+						if (act)
+						{
+							if (cur_setting_idx == 1)
+							{
+								// throttle analog
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = act;
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_Analog;
+								SaveBindingToIni(MapJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+							}
+							if (cur_setting_idx == 2)
+							{
+								// brakes analog
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = act;
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_Analog;
+								SaveBindingToIni(MapJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+							}
+							if (cur_setting_idx == 3)
+							{
+								// steer left analog
+								SteerLeftAxis = act;
+								ScannerConfigs[JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT].BitmaskStuff = SteerLeftAxis;
+								SaveSteerBindingToIni("SteerLeftAxis", SteerLeftAxis);
+								SaveBindingToIni(JOY_EVENT_DRAG_RACE_CHANGE_LANE_LEFT, SteerLeftAxis);
+							}
+							if (cur_setting_idx == 4)
+							{
+								// steer right analog
+								SteerRightAxis = act;
+								ScannerConfigs[JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT].BitmaskStuff = SteerRightAxis;
+								SaveSteerBindingToIni("SteerRightAxis", SteerRightAxis);
+								SaveBindingToIni(JOY_EVENT_DRAG_RACE_CHANGE_LANE_RIGHT, SteerRightAxis);
+							}
+							cur_setting_idx = 0;
+							return;
+						}
+					}
+					else
+					{
+						// digital ONLY bindings -- reads only the buttons (on the secondary bind)
+						if (wButtons)
+						{
+							if (cur_setting_idx == 1)
+							{
+								// throttle digital
+								ScannerConfigs[MapSecondaryJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = wButtons;
+								ScannerConfigs[MapSecondaryJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalUpOrDown;
+								SaveBindingToIni(MapSecondaryJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapSecondaryJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+							}
+							if (cur_setting_idx == 2)
+							{
+								// brakes digital
+								ScannerConfigs[MapSecondaryJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = wButtons;
+								ScannerConfigs[MapSecondaryJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalUpOrDown;
+								SaveBindingToIni(MapSecondaryJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapSecondaryJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+							}
+							if (cur_setting_idx == 3)
+							{
+								// steer left digital
+								SteerLeftButton = wButtons;
+								// TODO: map drag steering to digital steering (or redo its entire handler)
+								SaveSteerBindingToIni("SteerLeftButton", SteerLeftButton);
+							}
+							if (cur_setting_idx == 4)
+							{
+								// steer right digital
+								SteerRightButton = wButtons;
+								// TODO: map drag steering to digital steering (or redo its entire handler)
+								SaveSteerBindingToIni("SteerRightButton", SteerRightButton);
+							}
+							cur_setting_idx = 0;
+							return;
+						}
+					}
+				}
+				// all other bindings - these can be bound to both analogs and digitals
+				else
+				{
+					uint16_t act = GetAnalogActivity();
+					if (act)
+					{
+						if (cur_setting_idx_secondary == 0)
+						{
+							ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = act;
+							if (bIsEventDigitalDownOnly(MapJoypadConfigToEvent(cur_setting_idx)))
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalAnalog;
+							else
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalDownAnalog;
+							SaveBindingToIni(MapJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+						}
+						cur_setting_idx = 0;
+						return;
+					}
+					else if (wButtons)
+					{
+						// detect which button is pressed
+						if (cur_setting_idx_secondary == 0)
+						{
+							ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = wButtons;
+							if (bIsEventDigitalDownOnly(MapJoypadConfigToEvent(cur_setting_idx)))
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalDown;
+							else
+								ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].ScannerFunctionPointer = (unsigned int)&Scanner_DigitalUpOrDown;
+							SaveBindingToIni(MapJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+						}
+						cur_setting_idx = 0;
+						return;
+					}
+				}
+			}
 		}
 	}
 }
@@ -1427,7 +1969,8 @@ void __stdcall ReadControllerData()
 	if (KeyboardReadingMode == KB_READINGMODE_BUFFERED)
 		GetKeyboardState(VKeyStates[0]);
 #ifdef GAME_UG
-	HandleInGameConfigMenu();
+	if (*(int*)GAMEFLOWMANAGER_STATUS_ADDR == 3)
+		HandleInGameConfigMenu();
 #endif
 }
 
