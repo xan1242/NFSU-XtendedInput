@@ -1723,8 +1723,11 @@ void HandleInGameConfigMenu()
 						}
 						else
 						{
-							ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].keycode = 0;
-							SaveBindingToIniKB(MapKeyboardConfigToEvent(cur_setting_idx), ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].keycode);
+							if (cur_setting_idx_secondary == 0)
+							{
+								ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].keycode = 0;
+								SaveBindingToIniKB(MapKeyboardConfigToEvent(cur_setting_idx), ScannerConfigs[MapKeyboardConfigToEvent(cur_setting_idx)].keycode);
+							}
 						}
 
 						cur_setting_idx = 0;
@@ -1823,8 +1826,11 @@ void HandleInGameConfigMenu()
 					}
 					else
 					{
-						ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = 0;
-						SaveBindingToIni(MapJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+						if (cur_setting_idx_secondary == 0)
+						{
+							ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff = 0;
+							SaveBindingToIni(MapJoypadConfigToEvent(cur_setting_idx), ScannerConfigs[MapJoypadConfigToEvent(cur_setting_idx)].BitmaskStuff);
+						}
 					}
 					cur_setting_idx = 0;
 					return;
