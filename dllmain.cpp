@@ -2030,7 +2030,7 @@ int Init()
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR2, ReadControllerData, true);
 	injector::MakeCALL(ACTUALREADJOYDATA_CALL_ADDR3, ReadControllerData, true);
 #endif
-#ifndef GAME_UG
+#ifdef GAME_UG2
 	// custom config finder (because it returns 0 with the original function)
 	injector::MakeJMP(FINDSCANNERCONFIG_ADDR, FindScannerConfig_Custom, true);
 	// Win32 mouse injection
@@ -2039,6 +2039,7 @@ int Init()
 	injector::MakeJMP(0x005D268C, 0x5D269C, true);
 	// disable PC_CURSOR texture to avoid duplicate cursors
 	injector::WriteMemory<unsigned int>(0x0050B4EA, 0, true);
+	injector::MakeNOP(DISABLE_WHEEL_ADDR, 5, true);
 #endif
 
 	// custom steering handler
