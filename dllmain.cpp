@@ -81,7 +81,7 @@ struct CONTROLLER_STATE
 // TODO: buffered raw input
 
 RAWINPUTDEVICE Rid;
-BYTE VKeyStates[2][255];
+BYTE VKeyStates[2][256];
 bool KeyboardState = true; // connection status
 bool bAllowTwoPlayerKB = false; // allow for 2 players to use their own KB devices (nothing to do with gamepads)
 unsigned int KeyboardReadingMode = 0; // 0 = buffered synchronous, 1 = unbuffered asynchronous, 2 = unbuffered raw
@@ -603,13 +603,13 @@ int Scanner_DigitalUpOrDown_RawKB(void* EventNode, unsigned int* unk1, unsigned 
 	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
 	{
 
-		if (VKeyStates[ci][inScannerConfig->keycode])
+		if (inScannerConfig->keycode && VKeyStates[ci][inScannerConfig->keycode])
 		{
 			EventStatesKB[ci][inScannerConfig->JoyEvent] = VKeyStates[ci][inScannerConfig->keycode];
 			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
 		}
 
-		if (!VKeyStates[ci][inScannerConfig->keycode])
+		if (inScannerConfig->keycode && !VKeyStates[ci][inScannerConfig->keycode])
 		{
 			EventStatesKB[ci][inScannerConfig->JoyEvent] = VKeyStates[ci][inScannerConfig->keycode];
 			return inScannerConfig->JoyEvent;
@@ -617,16 +617,16 @@ int Scanner_DigitalUpOrDown_RawKB(void* EventNode, unsigned int* unk1, unsigned 
 	}
 
 	// we're using BitmaskStuff to define which button is actually pressed
-	if ((VKeyStates[ci][inScannerConfig->keycode]) != EventStatesKB[ci][inScannerConfig->JoyEvent])
+	if (inScannerConfig->keycode && ((VKeyStates[ci][inScannerConfig->keycode]) != EventStatesKB[ci][inScannerConfig->JoyEvent]))
 	{
 		// on change to TRUE -- return 0xFF + JoyEvent number (normally this is a number defined in scannerconfig)
-		if (VKeyStates[ci][inScannerConfig->keycode])
+		if (inScannerConfig->keycode && VKeyStates[ci][inScannerConfig->keycode])
 		{
 			EventStatesKB[ci][inScannerConfig->JoyEvent] = VKeyStates[ci][inScannerConfig->keycode];
 			return inScannerConfig->JoyEvent + (inScannerConfig->param << 8);
 		}
 		// on change to FALSE -- return JoyEvent number
-		if (!VKeyStates[ci][inScannerConfig->keycode])
+		if (inScannerConfig->keycode && !VKeyStates[ci][inScannerConfig->keycode])
 		{
 			EventStatesKB[ci][inScannerConfig->JoyEvent] = VKeyStates[ci][inScannerConfig->keycode];
 			return inScannerConfig->JoyEvent;
@@ -639,7 +639,10 @@ int Scanner_DigitalUpOrDown_RawKB(void* EventNode, unsigned int* unk1, unsigned 
 
 int Scanner_DigitalUpOrDown_SyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
-	bool bKeyState = VKeyStates[0][inScannerConfig->keycode] >> 7;
+	bool bKeyState = false;
+
+	if (inScannerConfig->keycode)
+		bKeyState = VKeyStates[0][inScannerConfig->keycode] >> 7;
 
 	// throttle is very time sensitive, so we return all the time
 	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
@@ -680,7 +683,10 @@ int Scanner_DigitalUpOrDown_SyncKB(void* EventNode, unsigned int* unk1, unsigned
 
 int Scanner_DigitalUpOrDown_AsyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
-	bool bKeyState = GetAsyncKeyState(inScannerConfig->keycode) >> 15;
+	bool bKeyState = false;
+
+	if (inScannerConfig->keycode)
+		bKeyState = GetAsyncKeyState(inScannerConfig->keycode) >> 15;
 
 	// throttle/brake is very time sensitive, so we return all the time
 	if ((inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_THROTTLE_ANALOG_ALTERNATE) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG) || (inScannerConfig->JoyEvent == JOY_EVENT_BRAKE_ANALOG_ALTERNATE))
@@ -770,7 +776,7 @@ int Scanner_DigitalDown_RawKB(void* EventNode, unsigned int* unk1, unsigned int 
 		ci = 1;
 
 	// we're using BitmaskStuff to define which button is actually pressed
-	if ((VKeyStates[ci][inScannerConfig->keycode]) != EventStatesKB[ci][inScannerConfig->JoyEvent])
+	if (inScannerConfig->keycode && ((VKeyStates[ci][inScannerConfig->keycode]) != EventStatesKB[ci][inScannerConfig->JoyEvent]))
 	{
 		EventStatesKB[ci][inScannerConfig->JoyEvent] = (VKeyStates[ci][inScannerConfig->keycode]);
 		// on change to TRUE -- return event
@@ -786,7 +792,10 @@ int Scanner_DigitalDown_RawKB(void* EventNode, unsigned int* unk1, unsigned int 
 
 int Scanner_DigitalDown_SyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
-	bool bKeyState = VKeyStates[0][inScannerConfig->keycode] >> 7;
+	bool bKeyState = false;
+
+	if (inScannerConfig->keycode)
+		bKeyState = VKeyStates[0][inScannerConfig->keycode] >> 7;
 
 	// we're using BitmaskStuff to define which button is actually pressed
 	if (bKeyState != EventStatesKB[0][inScannerConfig->JoyEvent])
@@ -805,7 +814,10 @@ int Scanner_DigitalDown_SyncKB(void* EventNode, unsigned int* unk1, unsigned int
 
 int Scanner_DigitalDown_AsyncKB(void* EventNode, unsigned int* unk1, unsigned int unk2, ScannerConfig* inScannerConfig, void* Joystick)
 {
-	bool bKeyState = GetAsyncKeyState(inScannerConfig->keycode) >> 15;
+	bool bKeyState = false;
+
+	if (inScannerConfig->keycode)
+		bKeyState = GetAsyncKeyState(inScannerConfig->keycode) >> 15;
 
 	// we're using BitmaskStuff to define which button is actually pressed
 	if (bKeyState != EventStatesKB[0][inScannerConfig->JoyEvent])
@@ -1328,22 +1340,22 @@ void RealDriver_JoyHandler_Steer(int JoystickPort, int JoyEvent, char Value, voi
 	switch (KeyboardReadingMode)
 	{
 	case KB_READINGMODE_UNBUFFERED_RAW:
-		if (VKeyStates[JoystickPort][SteerLeftVKey])
+		if (SteerLeftVKey && VKeyStates[JoystickPort][SteerLeftVKey])
 			DigitalSteerValueKB = DigitalSteerValueKB + 1.0;
-		if (VKeyStates[JoystickPort][SteerRightVKey])
+		if (SteerRightVKey && VKeyStates[JoystickPort][SteerRightVKey])
 			DigitalSteerValueKB = DigitalSteerValueKB - 1.0;
 		break;
 	case KB_READINGMODE_BUFFERED:
-		if (VKeyStates[0][SteerLeftVKey] >> 7)
+		if (SteerLeftVKey && VKeyStates[0][SteerLeftVKey] >> 7)
 			DigitalSteerValueKB = DigitalSteerValueKB + 1.0;
-		if (VKeyStates[0][SteerRightVKey] >> 7)
+		if (SteerRightVKey && VKeyStates[0][SteerRightVKey] >> 7)
 			DigitalSteerValueKB = DigitalSteerValueKB - 1.0;
 		break;
 	case KB_READINGMODE_UNBUFFERED_ASYNC:
 	default:
-		if (GetAsyncKeyState(SteerLeftVKey) >> 15)
+		if (SteerLeftVKey && GetAsyncKeyState(SteerLeftVKey) >> 15)
 			DigitalSteerValueKB = DigitalSteerValueKB + 1.0;
-		if (GetAsyncKeyState(SteerRightVKey) >> 15)
+		if (SteerRightVKey && GetAsyncKeyState(SteerRightVKey) >> 15)
 			DigitalSteerValueKB = DigitalSteerValueKB - 1.0;
 		break;
 	}
@@ -1628,7 +1640,7 @@ int KB_GetCurrentPressedKey()
 
 		for (int i = 0; i < 255; i++)
 		{
-			if (VKeyStates[0][i] >> 7)
+			if (i && VKeyStates[0][i] >> 7)
 				if (!bIgnorableVKey(i)) // TODO: separate Left Control and Right Alt
 					return i;
 		}
@@ -1638,7 +1650,7 @@ int KB_GetCurrentPressedKey()
 
 		for (int i = 0; i < 255; i++)
 		{
-			if (GetAsyncKeyState(i) >> 15)
+			if (i && GetAsyncKeyState(i) >> 15)
 				if (!bIgnorableVKey(i))
 					return i;
 		}
