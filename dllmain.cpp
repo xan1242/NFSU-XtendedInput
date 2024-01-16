@@ -44,6 +44,8 @@
 #include "NFSU_XtendedInput_XInputConfig.h"
 #include "NFSU_XtendedInput_VKHash.h"
 
+#include <SDL.h>
+
 #define MAX_CONTROLLERS 4  // XInput handles up to 4 controllers 
 
 WORD INPUT_DEADZONE_LS = (0.24f * FLOAT(0x7FFF));  // Default to 24% of the +/- 32767 range.   This is a reasonable default value but can be altered if needed.
@@ -256,7 +258,7 @@ LRESULT WINAPI CustomWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 		}
 		break;
 #endif
-	default: 
+	default:
 		break;
 	}
 
@@ -1215,7 +1217,7 @@ int Scanner_DigitalAnyButton(void* EventNode, unsigned int* unk1, unsigned int u
 			return inScannerConfig->JoyEvent;
 		}
 	}
-	
+
 	// otherwise just keep returning zero, we're only returning changes
 	return 0;
 
@@ -1459,8 +1461,8 @@ void SetupScannerConfig()
 		// try checking for single-char
 		char lettercheck[32];
 		strcpy(lettercheck, inireader.ReadString("EventsKB", "KeyboardSteerLeft", "VK_LEFT"));
-			if (lettercheck[1] == '\0')
-				SteerLeftVKey = toupper(lettercheck[0]);
+		if (lettercheck[1] == '\0')
+			SteerLeftVKey = toupper(lettercheck[0]);
 	}
 	SteerRightVKey = ConvertVKNameToValue(inireader.ReadString("EventsKB", "KeyboardSteerRight", "VK_RIGHT"));
 	if (SteerRightVKey == 0)
@@ -1495,12 +1497,37 @@ void InitCustomKBInput()
 
 HRESULT UpdateControllerState()
 {
-	DWORD dwResult;
+	SDL_GameControllerUpdate();
 
-	dwResult = XInputGetState(0, &g_Controllers[0].state);
+	SDL_GameController* sdlGameController0 = SDL_GameControllerOpen(0);
 
-	if (dwResult == ERROR_SUCCESS)
+	if (sdlGameController0 != nullptr)
 	{
+		ZeroMemory(&g_Controllers[0].state.Gamepad, sizeof(XINPUT_GAMEPAD));
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_A) ? XINPUT_GAMEPAD_A : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_B) ? XINPUT_GAMEPAD_B : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_X) ? XINPUT_GAMEPAD_X : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_Y) ? XINPUT_GAMEPAD_Y : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) ? XINPUT_GAMEPAD_LEFT_SHOULDER : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) ? XINPUT_GAMEPAD_RIGHT_SHOULDER : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_DPAD_UP) ? XINPUT_GAMEPAD_DPAD_UP : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_DPAD_DOWN) ? XINPUT_GAMEPAD_DPAD_DOWN : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_DPAD_LEFT) ? XINPUT_GAMEPAD_DPAD_LEFT : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) ? XINPUT_GAMEPAD_DPAD_RIGHT : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_BACK) ? XINPUT_GAMEPAD_BACK : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_START) ? XINPUT_GAMEPAD_START : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_LEFTSTICK) ? XINPUT_GAMEPAD_LEFT_THUMB : 0;
+		g_Controllers[0].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController0, SDL_CONTROLLER_BUTTON_RIGHTSTICK) ? XINPUT_GAMEPAD_RIGHT_THUMB : 0;
+
+		g_Controllers[0].state.Gamepad.bLeftTrigger = SDL_GameControllerGetAxis(sdlGameController0, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+		g_Controllers[0].state.Gamepad.bRightTrigger = SDL_GameControllerGetAxis(sdlGameController0, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+
+		g_Controllers[0].state.Gamepad.sThumbLX = SDL_GameControllerGetAxis(sdlGameController0, SDL_CONTROLLER_AXIS_LEFTX);
+		g_Controllers[0].state.Gamepad.sThumbLY = SDL_GameControllerGetAxis(sdlGameController0, SDL_CONTROLLER_AXIS_LEFTY);
+
+		g_Controllers[0].state.Gamepad.sThumbRX = SDL_GameControllerGetAxis(sdlGameController0, SDL_CONTROLLER_AXIS_RIGHTX);
+		g_Controllers[0].state.Gamepad.sThumbRY = SDL_GameControllerGetAxis(sdlGameController0, SDL_CONTROLLER_AXIS_RIGHTY);
+
 		g_Controllers[0].bConnected = true;
 		*(int*)DEVICE_COUNT_ADDR = 2;
 
@@ -1525,7 +1552,6 @@ HRESULT UpdateControllerState()
 
 		if (g_Controllers[0].state.Gamepad.wButtons || g_Controllers[0].state.Gamepad.sThumbLX || g_Controllers[0].state.Gamepad.sThumbLY || g_Controllers[0].state.Gamepad.sThumbRX || g_Controllers[0].state.Gamepad.sThumbRY || g_Controllers[0].state.Gamepad.bRightTrigger || g_Controllers[0].state.Gamepad.bLeftTrigger)
 			LastControlledDevice = LASTCONTROLLED_CONTROLLER;
-
 	}
 	else
 	{
@@ -1533,30 +1559,59 @@ HRESULT UpdateControllerState()
 		*(int*)DEVICE_COUNT_ADDR = 1;
 	}
 
-	dwResult = XInputGetState(1, &g_Controllers[1].state);
+	SDL_GameController* sdlGameController1 = SDL_GameControllerOpen(1);
 
-	if (dwResult == ERROR_SUCCESS)
+	if (sdlGameController1 != nullptr)
 	{
+		ZeroMemory(&g_Controllers[1].state.Gamepad, sizeof(XINPUT_GAMEPAD));
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_A) ? XINPUT_GAMEPAD_A : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_B) ? XINPUT_GAMEPAD_B : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_X) ? XINPUT_GAMEPAD_X : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_Y) ? XINPUT_GAMEPAD_Y : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_LEFTSHOULDER) ? XINPUT_GAMEPAD_LEFT_SHOULDER : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) ? XINPUT_GAMEPAD_RIGHT_SHOULDER : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_DPAD_UP) ? XINPUT_GAMEPAD_DPAD_UP : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_DPAD_DOWN) ? XINPUT_GAMEPAD_DPAD_DOWN : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_DPAD_LEFT) ? XINPUT_GAMEPAD_DPAD_LEFT : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_DPAD_RIGHT) ? XINPUT_GAMEPAD_DPAD_RIGHT : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_BACK) ? XINPUT_GAMEPAD_BACK : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_START) ? XINPUT_GAMEPAD_START : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_LEFTSTICK) ? XINPUT_GAMEPAD_LEFT_THUMB : 0;
+		g_Controllers[1].state.Gamepad.wButtons |= SDL_GameControllerGetButton(sdlGameController1, SDL_CONTROLLER_BUTTON_RIGHTSTICK) ? XINPUT_GAMEPAD_RIGHT_THUMB : 0;
+
+		g_Controllers[1].state.Gamepad.bLeftTrigger = SDL_GameControllerGetAxis(sdlGameController1, SDL_CONTROLLER_AXIS_TRIGGERLEFT);
+		g_Controllers[1].state.Gamepad.bRightTrigger = SDL_GameControllerGetAxis(sdlGameController1, SDL_CONTROLLER_AXIS_TRIGGERRIGHT);
+
+		g_Controllers[1].state.Gamepad.sThumbLX = SDL_GameControllerGetAxis(sdlGameController1, SDL_CONTROLLER_AXIS_LEFTX);
+		g_Controllers[1].state.Gamepad.sThumbLY = SDL_GameControllerGetAxis(sdlGameController1, SDL_CONTROLLER_AXIS_LEFTY);
+
+		g_Controllers[1].state.Gamepad.sThumbRX = SDL_GameControllerGetAxis(sdlGameController1, SDL_CONTROLLER_AXIS_RIGHTX);
+		g_Controllers[1].state.Gamepad.sThumbRY = SDL_GameControllerGetAxis(sdlGameController1, SDL_CONTROLLER_AXIS_RIGHTY);
+
 		g_Controllers[1].bConnected = true;
-		* (unsigned char*)JOYSTICKTYPE_P2_ADDR = 0;
+		*(int*)DEVICE_COUNT_ADDR = 2;
+
 		// Zero value if thumbsticks are within the dead zone 
-		if ((g_Controllers[1].state.Gamepad.sThumbLX < INPUT_DEADZONE_LS_P2 &&
-			g_Controllers[1].state.Gamepad.sThumbLX > -INPUT_DEADZONE_LS_P2) &&
-			(g_Controllers[1].state.Gamepad.sThumbLY < INPUT_DEADZONE_LS_P2 &&
-				g_Controllers[1].state.Gamepad.sThumbLY > -INPUT_DEADZONE_LS_P2))
+		if ((g_Controllers[1].state.Gamepad.sThumbLX < INPUT_DEADZONE_LS &&
+			g_Controllers[1].state.Gamepad.sThumbLX > -INPUT_DEADZONE_LS) &&
+			(g_Controllers[1].state.Gamepad.sThumbLY < INPUT_DEADZONE_LS &&
+				g_Controllers[1].state.Gamepad.sThumbLY > -INPUT_DEADZONE_LS))
 		{
 			g_Controllers[1].state.Gamepad.sThumbLX = 0;
 			g_Controllers[1].state.Gamepad.sThumbLY = 0;
 		}
 
-		if ((g_Controllers[1].state.Gamepad.sThumbRX < INPUT_DEADZONE_RS_P2 &&
-			g_Controllers[1].state.Gamepad.sThumbRX > -INPUT_DEADZONE_RS_P2) &&
-			(g_Controllers[1].state.Gamepad.sThumbRY < INPUT_DEADZONE_RS_P2 &&
-				g_Controllers[1].state.Gamepad.sThumbRY > -INPUT_DEADZONE_RS_P2))
+		if ((g_Controllers[1].state.Gamepad.sThumbRX < INPUT_DEADZONE_RS &&
+			g_Controllers[1].state.Gamepad.sThumbRX > -INPUT_DEADZONE_RS) &&
+			(g_Controllers[1].state.Gamepad.sThumbRY < INPUT_DEADZONE_RS &&
+				g_Controllers[1].state.Gamepad.sThumbRY > -INPUT_DEADZONE_RS))
 		{
 			g_Controllers[1].state.Gamepad.sThumbRX = 0;
 			g_Controllers[1].state.Gamepad.sThumbRY = 0;
 		}
+
+		if (g_Controllers[1].state.Gamepad.wButtons || g_Controllers[1].state.Gamepad.sThumbLX || g_Controllers[1].state.Gamepad.sThumbLY || g_Controllers[1].state.Gamepad.sThumbRX || g_Controllers[1].state.Gamepad.sThumbRY || g_Controllers[1].state.Gamepad.bRightTrigger || g_Controllers[1].state.Gamepad.bLeftTrigger)
+			LastControlledDevice = LASTCONTROLLED_CONTROLLER;
 	}
 	else
 	{
@@ -1570,7 +1625,7 @@ HRESULT UpdateControllerState()
 		*(unsigned char*)JOYSTICKTYPE_P1_ADDR = 1;
 	else
 		*(unsigned char*)JOYSTICKTYPE_P1_ADDR = 0xFF;
-	
+
 
 	return S_OK;
 }
@@ -1596,14 +1651,14 @@ void ReadXInput_Extra()
 			if ((wButtons & XINPUT_GAMEPAD_BACK)) // trigger once only on button down state
 				*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'Q';
 			bQuitButtonOldState = (wButtons & XINPUT_GAMEPAD_BACK);
-		}
+}
 #endif
 #ifdef GAME_UG2
 		if ((wButtons & XINPUT_GAMEPAD_BACK) != bQuitButtonOldState)
 		{
 			if ((wButtons & XINPUT_GAMEPAD_BACK)) // trigger once only on button down state
 				FESendKeystroke('Q');
-				//*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'Q';
+			//*(char*)FE_WINDOWS_KEY_CODE_ADDR = 'Q';
 			bQuitButtonOldState = (wButtons & XINPUT_GAMEPAD_BACK);
 		}
 #endif
@@ -1697,7 +1752,7 @@ void HandleInGameConfigMenu()
 	if (cur_setting_idx)
 	{
 		WORD wButtons = g_Controllers[0].state.Gamepad.wButtons;
-		
+
 		// we want to delay the button reads for just a bit so we don't end up accidentally binding buttons
 		if (timeGetTime() > BindAllowTime)
 		{
@@ -1848,7 +1903,7 @@ void HandleInGameConfigMenu()
 					return;
 				}
 
-				
+
 				if (((cur_setting_idx >= 1) && (cur_setting_idx <= 4)))
 				{
 					if ((cur_setting_idx_secondary == 0))
@@ -2003,12 +2058,13 @@ void InitConfig()
 	SHIFT_ANALOG_THRESHOLD = (inireader.ReadFloat("Deadzone", "DeadzonePercent_Shifting", 0.62f) * FLOAT(0x7FFF));
 	FEUPDOWN_ANALOG_THRESHOLD = (inireader.ReadFloat("Deadzone", "DeadzonePercent_AnalogStickDigital", 0.50f) * FLOAT(0x7FFF));
 	TRIGGER_ACTIVATION_THRESHOLD = (inireader.ReadFloat("Deadzone", "DeadzonePercent_AnalogTriggerDigital", 0.12f) * FLOAT(0xFF));
-	
+
 	SetupScannerConfig();
 }
 
 int Init()
 {
+	SDL_Init(SDL_INIT_GAMECONTROLLER);
 #ifdef GAME_UG
 	// hook FEng globally in FEPkgMgr_SendMessageToPackage
 	injector::MakeJMP(FENG_SENDMSG_HOOK_ADDR, FEngGlobalCave, true);
