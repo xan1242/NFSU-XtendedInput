@@ -1,3 +1,13 @@
+# PROJECT UPDATE
+
+This project will be merged with [NFS_XtendedInput](https://github.com/xan1242/NFS-XtendedInput) and it is currently undergoing a major rewrite.
+
+Any and all issues that curently exist will not be addressed (they will be addressed in the new project instead).
+
+It will take a while before it gets published, so please be patient.
+
+# ORIGINAL README
+
 # Need for Speed Underground & Underground 2 - Xtended Input
 
 This is a plugin for NFS Underground & Underground 2 which brings XInput support to the games!
